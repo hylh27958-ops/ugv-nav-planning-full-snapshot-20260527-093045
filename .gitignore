@@ -18,6 +18,14 @@ __pycache__/
 *.pyd
 .pytest_cache/
 
+# Jupyter / editor backup files
+.ipynb_checkpoints/
+*.save
+*.bak
+*.tmp
+*.swp
+*.swo
+
 # ROS bags / recordings
 *.bag
 *.db3
@@ -31,8 +39,3 @@ __pycache__/
 .idea/
 .DS_Store
 Thumbs.db
-
-# Temporary files
-*.tmp
-*.swp
-*.swo
