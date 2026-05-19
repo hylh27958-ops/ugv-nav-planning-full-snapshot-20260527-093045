@@ -40,3 +40,4 @@ __pycache__/
 .DS_Store
 Thumbs.db
 *.bak_before_*
+*.bak_before_*

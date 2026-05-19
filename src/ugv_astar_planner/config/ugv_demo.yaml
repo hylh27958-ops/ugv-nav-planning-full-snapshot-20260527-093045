@@ -53,7 +53,7 @@ safety_filter:
     max_angular: 1.2
     max_linear_accel: 0.60
     max_angular_accel: 2.0
-    cmd_timeout: 1.0
+    cmd_timeout: 1.5
     front_angle_deg: 45.0
     stop_distance: 0.30
     slow_distance: 0.85
@@ -71,12 +71,15 @@ teb_path_sender:
     controller_id: "FollowPath"
     goal_checker_id: "goal_checker"
     update_period: 0.2
-    resend_period: 1.0
-    feedback_timeout: 2.0
+    resend_period: 2.0
+    feedback_timeout: 4.0
     goal_tolerance: 0.35
-    periodic_replan: true
+    periodic_replan: false
     goal_change_distance: 0.25
     min_path_poses: 2
+    waypoint_spacing: 0.15
+    progress_timeout: 8.0
+    progress_epsilon: 0.10
 
 experiment_recorder:
   ros__parameters:
@@ -88,7 +91,7 @@ scenario_runner:
   ros__parameters:
     goals: "12.0,1.0;1.0,8.0;12.8,8.0;0.8,0.8"
     loop: false
-    timeout_sec: 70.0
+    timeout_sec: 120.0
     settle_sec: 2.0
     initial_delay_sec: 3.0
     publish_period_sec: 1.0
