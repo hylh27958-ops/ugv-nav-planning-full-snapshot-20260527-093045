@@ -1,0 +1,38 @@
+# ROS2 / colcon generated files
+build/
+install/
+log/
+
+# Experiment outputs
+results/
+*.csv
+*.png
+*.jpg
+*.jpeg
+*.pdf
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# ROS bags / recordings
+*.bag
+*.db3
+*.mcap
+
+# Logs
+*.log
+
+# Editor / system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.swp
+*.swo

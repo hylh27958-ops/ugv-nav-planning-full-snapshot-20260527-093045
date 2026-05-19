@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>ugv_teb_bringup</name>
+  <version>0.0.0</version>
+  <description>Minimal bringup for testing TEB as a Nav2 controller plugin.</description>
+
+  <maintainer email="root@example.com">root</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>nav2_controller</exec_depend>
+  <exec_depend>nav2_costmap_2d</exec_depend>
+  <exec_depend>nav2_util</exec_depend>
+  <exec_depend>teb_local_planner</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

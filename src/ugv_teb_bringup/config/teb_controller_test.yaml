@@ -1,0 +1,158 @@
+controller_server:
+  ros__parameters:
+    use_sim_time: false
+    controller_frequency: 10.0
+    costmap_update_timeout: 0.30
+    publish_zero_velocity: true
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.001
+    min_theta_velocity_threshold: 0.001
+    failure_tolerance: 0.3
+
+    progress_checker_plugins: ["progress_checker"]
+    goal_checker_plugins: ["goal_checker"]
+    controller_plugins: ["FollowPath"]
+
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      required_movement_radius: 0.1
+      movement_time_allowance: 10.0
+
+    goal_checker:
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.25
+      yaw_goal_tolerance: 0.25
+      stateful: true
+
+    FollowPath:
+      plugin: "teb_local_planner::TebLocalPlannerROS"
+
+      odom_topic: "/odom"
+      map_frame: "map"
+
+      max_vel_x: 0.45
+      max_vel_x_backwards: 0.1
+      max_vel_y: 0.0
+      max_vel_theta: 1.2
+      acc_lim_x: 0.45
+      acc_lim_y: 0.0
+      acc_lim_theta: 1.8
+      min_turning_radius: 0.0
+      wheelbase: 0.4
+      cmd_angle_instead_rotvel: false
+      is_footprint_dynamic: false
+      use_proportional_saturation: false
+      transform_tolerance: 0.5
+
+      footprint_model:
+        type: "circular"
+        radius: 0.22
+
+      xy_goal_tolerance: 0.25
+      yaw_goal_tolerance: 0.25
+      free_goal_vel: false
+      complete_global_plan: true
+
+      teb_autosize: 1.0
+      dt_ref: 0.3
+      dt_hysteresis: 0.1
+      min_samples: 3
+      max_samples: 50
+      global_plan_overwrite_orientation: true
+      allow_init_with_backwards_motion: false
+      max_global_plan_lookahead_dist: 3.0
+      global_plan_viapoint_sep: -1.0
+      global_plan_prune_distance: 1.0
+      exact_arc_length: false
+      feasibility_check_no_poses: 5
+      publish_feedback: false
+
+      min_obstacle_dist: 0.35
+      inflation_dist: 0.6
+      dynamic_obstacle_inflation_dist: 0.6
+      include_dynamic_obstacles: false
+      include_costmap_obstacles: false
+      costmap_obstacles_behind_robot_dist: 1.0
+      obstacle_poses_affected: 15
+      legacy_obstacle_association: false
+      obstacle_association_force_inclusion_factor: 1.5
+      obstacle_association_cutoff_factor: 5.0
+      costmap_converter_plugin: ""
+      costmap_converter_spin_thread: false
+      costmap_converter_rate: 5
+
+      no_inner_iterations: 5
+      no_outer_iterations: 4
+      optimization_activate: true
+      optimization_verbose: false
+      penalty_epsilon: 0.1
+      weight_max_vel_x: 2.0
+      weight_max_vel_y: 2.0
+      weight_max_vel_theta: 1.0
+      weight_acc_lim_x: 1.0
+      weight_acc_lim_y: 1.0
+      weight_acc_lim_theta: 1.0
+      weight_kinematics_nh: 1000.0
+      weight_kinematics_forward_drive: 1.0
+      weight_kinematics_turning_radius: 1.0
+      weight_optimaltime: 1.0
+      weight_shortest_path: 0.0
+      weight_obstacle: 50.0
+      weight_inflation: 0.2
+      weight_dynamic_obstacle: 10.0
+      weight_dynamic_obstacle_inflation: 0.2
+      weight_velocity_obstacle_ratio: 0.0
+      weight_viapoint: 1.0
+      weight_prefer_rotdir: 50.0
+      weight_adapt_factor: 2.0
+      obstacle_cost_exponent: 1.0
+
+      enable_homotopy_class_planning: false
+      enable_multithreading: false
+      simple_exploration: false
+      max_number_classes: 2
+      selection_cost_hysteresis: 1.0
+      selection_prefer_initial_plan: 0.95
+      selection_obst_cost_scale: 1.0
+      selection_alternative_time_cost: false
+      roadmap_graph_no_samples: 15
+      roadmap_graph_area_width: 5.0
+      roadmap_graph_area_length_scale: 1.0
+      h_signature_prescaler: 0.5
+      h_signature_threshold: 0.1
+      obstacle_heading_threshold: 1.0
+      switching_blocking_period: 0.0
+      viapoints_all_candidates: true
+      delete_detours_backwards: true
+      max_ratio_detours_duration_best_duration: 3.0
+      visualize_hc_graph: false
+      visualize_with_time_as_z_axis_scale: 0.0
+
+      shrink_horizon_backup: true
+      shrink_horizon_min_duration: 10.0
+      oscillation_recovery: true
+      oscillation_v_eps: 0.1
+      oscillation_omega_eps: 0.1
+      oscillation_recovery_min_duration: 10.0
+      oscillation_filter_duration: 10.0
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      use_sim_time: false
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_link
+      rolling_window: true
+      width: 6
+      height: 6
+      resolution: 0.05
+      robot_radius: 0.22
+      always_send_full_costmap: true
+      plugins: ["inflation_layer"]
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.6
