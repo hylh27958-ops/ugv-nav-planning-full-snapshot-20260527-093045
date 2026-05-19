@@ -15,8 +15,11 @@ class MetricsMonitor(Node):
     def __init__(self):
         super().__init__("metrics_monitor")
 
+        self.local_path_timeout = 2.0
+
         self.create_subscription(Path, "/astar_path", self.on_global_path, 10)
-        self.create_subscription(Path, "/local_trajectory", self.on_local_path, 10)
+        self.create_subscription(Path, "/local_trajectory", self.on_local_trajectory, 10)
+        self.create_subscription(Path, "/local_plan", self.on_teb_local_plan, 10)
         self.create_subscription(PoseStamped, "/robot_pose", self.on_robot_pose, 10)
         self.create_subscription(PoseStamped, "/astar_goal", self.on_goal_pose, 10)
         self.create_subscription(Twist, "/cmd_vel_raw", self.on_cmd_raw, 10)
@@ -33,11 +36,16 @@ class MetricsMonitor(Node):
         self.safety_scale_pub = self.create_publisher(Float32, "/metrics/safety_scale", 10)
         self.min_obstacle_pub = self.create_publisher(Float32, "/metrics/min_dynamic_obstacle_distance", 10)
         self.nav_status_pub = self.create_publisher(String, "/metrics/navigation_status", 10)
+        self.local_path_source_pub = self.create_publisher(String, "/metrics/local_trajectory_source", 10)
         self.summary_pub = self.create_publisher(String, "/metrics/summary", 10)
 
         self.global_path = []
-        self.local_path = []
+        self.local_trajectory_path = []
+        self.teb_local_plan = []
         self.dynamic_obstacles = []
+
+        self.last_local_trajectory_time = 0.0
+        self.last_teb_local_plan_time = 0.0
 
         self.has_robot_pose = False
         self.has_goal = False
@@ -61,17 +69,25 @@ class MetricsMonitor(Node):
 
         self.get_logger().info("Metrics monitor started.")
 
-    def on_global_path(self, msg):
-        self.global_path = [
+    def now_seconds(self):
+        return self.get_clock().now().nanoseconds * 1e-9
+
+    def path_from_msg(self, msg):
+        return [
             (pose.pose.position.x, pose.pose.position.y)
             for pose in msg.poses
         ]
 
-    def on_local_path(self, msg):
-        self.local_path = [
-            (pose.pose.position.x, pose.pose.position.y)
-            for pose in msg.poses
-        ]
+    def on_global_path(self, msg):
+        self.global_path = self.path_from_msg(msg)
+
+    def on_local_trajectory(self, msg):
+        self.local_trajectory_path = self.path_from_msg(msg)
+        self.last_local_trajectory_time = self.now_seconds()
+
+    def on_teb_local_plan(self, msg):
+        self.teb_local_plan = self.path_from_msg(msg)
+        self.last_teb_local_plan_time = self.now_seconds()
 
     def on_robot_pose(self, msg):
         self.robot_x = msg.pose.position.x
@@ -113,6 +129,26 @@ class MetricsMonitor(Node):
 
         self.dynamic_obstacles = obstacles
 
+    def select_local_path(self):
+        now = self.now_seconds()
+
+        teb_age = now - self.last_teb_local_plan_time
+        trajectory_age = now - self.last_local_trajectory_time
+
+        if self.teb_local_plan and teb_age <= self.local_path_timeout:
+            return self.teb_local_plan, "/local_plan", teb_age
+
+        if self.local_trajectory_path and trajectory_age <= self.local_path_timeout:
+            return self.local_trajectory_path, "/local_trajectory", trajectory_age
+
+        if self.teb_local_plan:
+            return self.teb_local_plan, "/local_plan_stale", teb_age
+
+        if self.local_trajectory_path:
+            return self.local_trajectory_path, "/local_trajectory_stale", trajectory_age
+
+        return [], "none", -1.0
+
     def path_length(self, points):
         if len(points) < 2:
             return 0.0
@@ -145,7 +181,7 @@ class MetricsMonitor(Node):
 
         return nearest if nearest is not None else -1.0
 
-    def navigation_status(self, goal_dist):
+    def navigation_status(self, goal_dist, local_path):
         if not self.has_robot_pose:
             return "WAITING_FOR_ROBOT_POSE"
 
@@ -162,7 +198,7 @@ class MetricsMonitor(Node):
         if len(self.global_path) < 2:
             return "NO_GLOBAL_PATH"
 
-        if len(self.local_path) < 2:
+        if len(local_path) < 2:
             return "NO_LOCAL_TRAJECTORY"
 
         return "NAVIGATING"
@@ -178,9 +214,11 @@ class MetricsMonitor(Node):
         publisher.publish(msg)
 
     def publish_metrics(self):
+        local_path, local_source, local_age = self.select_local_path()
+
         goal_dist = self.goal_distance()
         global_len = self.path_length(self.global_path)
-        local_len = self.path_length(self.local_path)
+        local_len = self.path_length(local_path)
         min_obs = self.min_dynamic_obstacle_distance()
 
         if abs(self.cmd_raw_linear) > 1e-4:
@@ -190,7 +228,7 @@ class MetricsMonitor(Node):
 
         safety_scale = max(0.0, min(1.0, safety_scale))
 
-        nav_status = self.navigation_status(goal_dist)
+        nav_status = self.navigation_status(goal_dist, local_path)
         elapsed = time.time() - self.goal_start_time
 
         self.publish_float(self.goal_distance_pub, goal_dist)
@@ -202,6 +240,7 @@ class MetricsMonitor(Node):
         self.publish_float(self.safety_scale_pub, safety_scale)
         self.publish_float(self.min_obstacle_pub, min_obs)
         self.publish_string(self.nav_status_pub, nav_status)
+        self.publish_string(self.local_path_source_pub, local_source)
 
         summary = {
             "navigation_status": nav_status,
@@ -209,6 +248,8 @@ class MetricsMonitor(Node):
             "goal_distance_m": round(goal_dist, 3),
             "global_path_length_m": round(global_len, 3),
             "local_trajectory_length_m": round(local_len, 3),
+            "local_trajectory_source": local_source,
+            "local_trajectory_age_s": round(local_age, 3),
             "cmd_raw_linear_mps": round(self.cmd_raw_linear, 3),
             "cmd_safe_linear_mps": round(self.cmd_safe_linear, 3),
             "cmd_safe_angular_radps": round(self.cmd_safe_angular, 3),
@@ -223,6 +264,11 @@ class MetricsMonitor(Node):
 def main():
     rclpy.init()
     node = MetricsMonitor()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()

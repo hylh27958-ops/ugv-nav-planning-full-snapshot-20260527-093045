@@ -18,7 +18,7 @@ astar_planner_demo:
     block_min_h: 2
     block_max_h: 8
     route_corridor_cells: 4
-    dynamic_obstacle_radius: 0.35
+    dynamic_obstacle_radius: 0.30
     dynamic_obstacles: "4.6,1.6,0.20,0.00,3.5,6.0,1.6,1.6;6.5,4.3,0.00,0.18,6.5,6.5,3.0,5.6;9.2,6.7,-0.16,0.00,8.0,10.5,6.7,6.7;10.7,7.5,0.00,-0.14,10.7,10.7,6.0,8.2"
 
 fake_base:
@@ -51,12 +51,12 @@ safety_filter:
     update_period: 0.05
     max_linear: 0.45
     max_angular: 1.2
-    max_linear_accel: 0.45
-    max_angular_accel: 1.8
-    cmd_timeout: 0.5
-    front_angle_deg: 60.0
-    stop_distance: 0.45
-    slow_distance: 1.2
+    max_linear_accel: 0.60
+    max_angular_accel: 2.0
+    cmd_timeout: 1.0
+    front_angle_deg: 45.0
+    stop_distance: 0.30
+    slow_distance: 0.85
 
 sac_adapter:
   ros__parameters:
@@ -71,7 +71,9 @@ teb_path_sender:
     controller_id: "FollowPath"
     goal_checker_id: "goal_checker"
     update_period: 0.2
-    resend_period: 2.0
+    resend_period: 1.0
+    feedback_timeout: 2.0
+    goal_tolerance: 0.35
     periodic_replan: true
     goal_change_distance: 0.25
     min_path_poses: 2

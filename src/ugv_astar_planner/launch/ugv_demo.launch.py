@@ -2,7 +2,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, TimerAction
 from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
-from launch_ros.actions import LifecycleNode, Node
+from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -142,7 +142,7 @@ def generate_launch_description():
             output="screen",
         ),
 
-        LifecycleNode(
+        Node(
             condition=IfCondition(use_teb),
             package="nav2_controller",
             executable="controller_server",
@@ -157,7 +157,7 @@ def generate_launch_description():
 
         TimerAction(
             condition=IfCondition(use_teb),
-            period=2.0,
+            period=1.0,
             actions=[
                 Node(
                     package="nav2_lifecycle_manager",
@@ -175,18 +175,13 @@ def generate_launch_description():
             ],
         ),
 
-        TimerAction(
+        Node(
             condition=IfCondition(use_teb),
-            period=3.0,
-            actions=[
-                Node(
-                    package="ugv_astar_planner",
-                    executable="teb_path_sender",
-                    name="teb_path_sender",
-                    parameters=[config_file],
-                    output="screen",
-                ),
-            ],
+            package="ugv_astar_planner",
+            executable="teb_path_sender",
+            name="teb_path_sender",
+            parameters=[config_file],
+            output="screen",
         ),
 
         Node(

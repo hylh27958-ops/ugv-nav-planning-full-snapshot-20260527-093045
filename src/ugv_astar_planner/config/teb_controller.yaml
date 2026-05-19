@@ -7,7 +7,7 @@ controller_server:
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.001
     min_theta_velocity_threshold: 0.001
-    failure_tolerance: 0.3
+    failure_tolerance: 1.0
 
     progress_checker_plugins: ["progress_checker"]
     goal_checker_plugins: ["goal_checker"]
@@ -15,13 +15,13 @@ controller_server:
 
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
-      required_movement_radius: 0.1
-      movement_time_allowance: 10.0
+      required_movement_radius: 0.05
+      movement_time_allowance: 20.0
 
     goal_checker:
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.25
-      yaw_goal_tolerance: 0.25
+      xy_goal_tolerance: 0.30
+      yaw_goal_tolerance: 0.35
       stateful: true
 
     FollowPath:
@@ -30,53 +30,53 @@ controller_server:
       odom_topic: "/odom"
       map_frame: "map"
 
-      max_vel_x: 0.45
-      max_vel_x_backwards: 0.1
+      max_vel_x: 0.35
+      max_vel_x_backwards: 0.05
       max_vel_y: 0.0
-      max_vel_theta: 1.2
-      acc_lim_x: 0.45
+      max_vel_theta: 0.9
+      acc_lim_x: 0.35
       acc_lim_y: 0.0
-      acc_lim_theta: 1.8
+      acc_lim_theta: 1.2
       min_turning_radius: 0.0
       wheelbase: 0.4
       cmd_angle_instead_rotvel: false
       is_footprint_dynamic: false
-      use_proportional_saturation: false
+      use_proportional_saturation: true
       transform_tolerance: 0.5
 
       footprint_model:
         type: "circular"
         radius: 0.22
 
-      xy_goal_tolerance: 0.25
-      yaw_goal_tolerance: 0.25
+      xy_goal_tolerance: 0.30
+      yaw_goal_tolerance: 0.35
       free_goal_vel: false
       complete_global_plan: true
 
       teb_autosize: 1.0
-      dt_ref: 0.3
-      dt_hysteresis: 0.1
-      min_samples: 3
-      max_samples: 50
+      dt_ref: 0.25
+      dt_hysteresis: 0.05
+      min_samples: 5
+      max_samples: 80
       global_plan_overwrite_orientation: true
       allow_init_with_backwards_motion: false
-      max_global_plan_lookahead_dist: 3.0
-      global_plan_viapoint_sep: -1.0
-      global_plan_prune_distance: 1.0
+      max_global_plan_lookahead_dist: 2.5
+      global_plan_viapoint_sep: 0.35
+      global_plan_prune_distance: 0.6
       exact_arc_length: false
       feasibility_check_no_poses: 5
-      publish_feedback: false
+      publish_feedback: true
 
-      min_obstacle_dist: 0.35
-      inflation_dist: 0.65
-      dynamic_obstacle_inflation_dist: 0.6
+      min_obstacle_dist: 0.25
+      inflation_dist: 0.45
+      dynamic_obstacle_inflation_dist: 0.45
       include_dynamic_obstacles: false
-      include_costmap_obstacles: true
-      costmap_obstacles_behind_robot_dist: 1.0
-      obstacle_poses_affected: 20
+      include_costmap_obstacles: false
+      costmap_obstacles_behind_robot_dist: 0.8
+      obstacle_poses_affected: 15
       legacy_obstacle_association: false
-      obstacle_association_force_inclusion_factor: 1.5
-      obstacle_association_cutoff_factor: 5.0
+      obstacle_association_force_inclusion_factor: 1.2
+      obstacle_association_cutoff_factor: 3.0
       costmap_converter_plugin: ""
       costmap_converter_spin_thread: false
       costmap_converter_rate: 5
@@ -85,25 +85,25 @@ controller_server:
       no_outer_iterations: 4
       optimization_activate: true
       optimization_verbose: false
-      penalty_epsilon: 0.1
-      weight_max_vel_x: 2.0
-      weight_max_vel_y: 2.0
+      penalty_epsilon: 0.08
+      weight_max_vel_x: 1.0
+      weight_max_vel_y: 1.0
       weight_max_vel_theta: 1.0
       weight_acc_lim_x: 1.0
       weight_acc_lim_y: 1.0
       weight_acc_lim_theta: 1.0
       weight_kinematics_nh: 1000.0
-      weight_kinematics_forward_drive: 1.0
+      weight_kinematics_forward_drive: 30.0
       weight_kinematics_turning_radius: 1.0
       weight_optimaltime: 1.0
-      weight_shortest_path: 0.0
-      weight_obstacle: 80.0
-      weight_inflation: 0.5
-      weight_dynamic_obstacle: 10.0
-      weight_dynamic_obstacle_inflation: 0.2
+      weight_shortest_path: 1.0
+      weight_obstacle: 10.0
+      weight_inflation: 0.2
+      weight_dynamic_obstacle: 5.0
+      weight_dynamic_obstacle_inflation: 0.1
       weight_velocity_obstacle_ratio: 0.0
-      weight_viapoint: 1.0
-      weight_prefer_rotdir: 50.0
+      weight_viapoint: 8.0
+      weight_prefer_rotdir: 5.0
       weight_adapt_factor: 2.0
       obstacle_cost_exponent: 1.0
 
@@ -128,13 +128,13 @@ controller_server:
       visualize_hc_graph: false
       visualize_with_time_as_z_axis_scale: 0.0
 
-      shrink_horizon_backup: true
-      shrink_horizon_min_duration: 10.0
+      shrink_horizon_backup: false
+      shrink_horizon_min_duration: 5.0
       oscillation_recovery: true
-      oscillation_v_eps: 0.1
-      oscillation_omega_eps: 0.1
-      oscillation_recovery_min_duration: 10.0
-      oscillation_filter_duration: 10.0
+      oscillation_v_eps: 0.05
+      oscillation_omega_eps: 0.05
+      oscillation_recovery_min_duration: 5.0
+      oscillation_filter_duration: 5.0
 
 local_costmap:
   local_costmap:
@@ -145,8 +145,8 @@ local_costmap:
       global_frame: map
       robot_base_frame: base_link
       rolling_window: true
-      width: 6
-      height: 6
+      width: 5
+      height: 5
       resolution: 0.05
       robot_radius: 0.22
       always_send_full_costmap: true
@@ -162,5 +162,5 @@ local_costmap:
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
-        inflation_radius: 0.65
+        cost_scaling_factor: 5.0
+        inflation_radius: 0.45
