@@ -1,5 +1,4 @@
 import json
-import math
 import time
 
 import rclpy
@@ -13,24 +12,22 @@ class SacAdapter(Node):
         super().__init__("sac_adapter")
 
         self.declare_parameter("update_period", 0.2)
-        self.declare_parameter("smoothing_alpha", 0.25)
-        self.declare_parameter("obstacle_caution_distance", 0.8)
-        self.declare_parameter("goal_slow_distance", 1.0)
+        self.declare_parameter("smoothing_alpha", 0.35)
+        self.declare_parameter("obstacle_caution_distance", 0.6)
+        self.declare_parameter("goal_slow_distance", 0.6)
 
-        self.declare_parameter("min_speed_scale", 0.40)
-        self.declare_parameter("max_speed_scale", 1.00)
-        self.declare_parameter("min_lookahead_scale", 0.60)
-        self.declare_parameter("max_lookahead_scale", 1.50)
-        self.declare_parameter("min_obstacle_caution", 0.70)
-        self.declare_parameter("max_obstacle_caution", 1.80)
-        self.declare_parameter("min_local_horizon_scale", 0.70)
-        self.declare_parameter("max_local_horizon_scale", 1.30)
+        self.declare_parameter("min_speed_scale", 0.65)
+        self.declare_parameter("max_speed_scale", 1.0)
+        self.declare_parameter("min_lookahead_scale", 0.8)
+        self.declare_parameter("max_lookahead_scale", 1.35)
+        self.declare_parameter("min_obstacle_caution", 0.8)
+        self.declare_parameter("max_obstacle_caution", 1.45)
+        self.declare_parameter("min_local_horizon_scale", 0.85)
+        self.declare_parameter("max_local_horizon_scale", 1.2)
 
         self.update_period = float(self.get_parameter("update_period").value)
         self.smoothing_alpha = float(self.get_parameter("smoothing_alpha").value)
-        self.obstacle_caution_distance = float(
-            self.get_parameter("obstacle_caution_distance").value
-        )
+        self.obstacle_caution_distance = float(self.get_parameter("obstacle_caution_distance").value)
         self.goal_slow_distance = float(self.get_parameter("goal_slow_distance").value)
 
         self.min_speed_scale = float(self.get_parameter("min_speed_scale").value)
@@ -39,12 +36,8 @@ class SacAdapter(Node):
         self.max_lookahead_scale = float(self.get_parameter("max_lookahead_scale").value)
         self.min_obstacle_caution = float(self.get_parameter("min_obstacle_caution").value)
         self.max_obstacle_caution = float(self.get_parameter("max_obstacle_caution").value)
-        self.min_local_horizon_scale = float(
-            self.get_parameter("min_local_horizon_scale").value
-        )
-        self.max_local_horizon_scale = float(
-            self.get_parameter("max_local_horizon_scale").value
-        )
+        self.min_local_horizon_scale = float(self.get_parameter("min_local_horizon_scale").value)
+        self.max_local_horizon_scale = float(self.get_parameter("max_local_horizon_scale").value)
 
         self.create_subscription(String, "/metrics/summary", self.on_metrics_summary, 10)
 
@@ -54,9 +47,7 @@ class SacAdapter(Node):
 
         self.metrics = {}
         self.last_metrics_time = 0.0
-
         self.last_goal_distance = None
-        self.last_reward_time = None
 
         self.speed_scale = 1.0
         self.lookahead_scale = 1.0
@@ -65,7 +56,7 @@ class SacAdapter(Node):
 
         self.timer = self.create_timer(self.update_period, self.on_timer)
 
-        self.get_logger().info("SAC adapter B1 RL parameter interface started.")
+        self.get_logger().info("SAC adapter B3 balanced RL parameter interface started.")
 
     def on_metrics_summary(self, msg):
         try:
@@ -91,20 +82,16 @@ class SacAdapter(Node):
     def normalized_obstacle_risk(self, min_obstacle_distance):
         if min_obstacle_distance < 0.0:
             return 0.0
-
         if self.obstacle_caution_distance <= 1e-6:
             return 0.0
-
         risk = (self.obstacle_caution_distance - min_obstacle_distance) / self.obstacle_caution_distance
         return self.clamp(risk, 0.0, 1.0)
 
     def normalized_goal_risk(self, goal_distance):
         if goal_distance < 0.0:
             return 0.0
-
         if self.goal_slow_distance <= 1e-6:
             return 0.0
-
         risk = (self.goal_slow_distance - goal_distance) / self.goal_slow_distance
         return self.clamp(risk, 0.0, 1.0)
 
@@ -113,7 +100,8 @@ class SacAdapter(Node):
         metrics_age = now - self.last_metrics_time if self.last_metrics_time > 0.0 else -1.0
 
         state = {
-            "schema_version": 1,
+            "schema_version": 2,
+            "policy_stage": "B3_balanced_rule_policy",
             "stamp": now,
             "metrics_age_s": round(metrics_age, 3),
             "navigation_status": self.metrics.get("navigation_status", "UNKNOWN"),
@@ -147,16 +135,18 @@ class SacAdapter(Node):
         safety_intervention = float(state["safety_intervention"])
 
         target_speed_scale = 1.0
-        target_speed_scale -= 0.45 * obstacle_risk
-        target_speed_scale -= 0.25 * goal_risk
-        target_speed_scale -= 0.20 * safety_intervention
+        target_speed_scale -= 0.22 * obstacle_risk
+        target_speed_scale -= 0.10 * goal_risk
+        target_speed_scale -= 0.08 * safety_intervention
         target_speed_scale = self.clamp(
-            target_speed_scale, self.min_speed_scale, self.max_speed_scale
+            target_speed_scale,
+            self.min_speed_scale,
+            self.max_speed_scale,
         )
 
-        target_lookahead_scale = 1.15
-        target_lookahead_scale -= 0.35 * obstacle_risk
-        target_lookahead_scale -= 0.25 * goal_risk
+        target_lookahead_scale = 1.08
+        target_lookahead_scale -= 0.14 * obstacle_risk
+        target_lookahead_scale -= 0.08 * goal_risk
         target_lookahead_scale = self.clamp(
             target_lookahead_scale,
             self.min_lookahead_scale,
@@ -164,17 +154,17 @@ class SacAdapter(Node):
         )
 
         target_obstacle_caution = 1.0
-        target_obstacle_caution += 0.65 * obstacle_risk
-        target_obstacle_caution += 0.25 * safety_intervention
+        target_obstacle_caution += 0.35 * obstacle_risk
+        target_obstacle_caution += 0.10 * safety_intervention
         target_obstacle_caution = self.clamp(
             target_obstacle_caution,
             self.min_obstacle_caution,
             self.max_obstacle_caution,
         )
 
-        target_local_horizon_scale = 1.10
-        target_local_horizon_scale -= 0.30 * obstacle_risk
-        target_local_horizon_scale -= 0.15 * goal_risk
+        target_local_horizon_scale = 1.05
+        target_local_horizon_scale -= 0.12 * obstacle_risk
+        target_local_horizon_scale -= 0.05 * goal_risk
         target_local_horizon_scale = self.clamp(
             target_local_horizon_scale,
             self.min_local_horizon_scale,
@@ -184,9 +174,7 @@ class SacAdapter(Node):
         self.speed_scale = self.smooth(self.speed_scale, target_speed_scale)
         self.lookahead_scale = self.smooth(self.lookahead_scale, target_lookahead_scale)
         self.obstacle_caution = self.smooth(self.obstacle_caution, target_obstacle_caution)
-        self.local_horizon_scale = self.smooth(
-            self.local_horizon_scale, target_local_horizon_scale
-        )
+        self.local_horizon_scale = self.smooth(self.local_horizon_scale, target_local_horizon_scale)
 
         return {
             "speed_scale": round(self.speed_scale, 3),
@@ -196,7 +184,6 @@ class SacAdapter(Node):
         }
 
     def compute_reward_hint(self, state):
-        now = time.time()
         goal_distance = float(state["goal_distance_m"])
         min_obs = float(state["min_dynamic_obstacle_distance_m"])
         safety_intervention = float(state["safety_intervention"])
@@ -212,9 +199,9 @@ class SacAdapter(Node):
                 self.obstacle_caution_distance - min_obs
             ) / self.obstacle_caution_distance
 
-        speed_reward = 0.15 * self.clamp(safe_speed / 0.45, 0.0, 1.0)
-        safety_penalty = 0.30 * safety_intervention
-        time_penalty = 0.01
+        speed_reward = 0.20 * self.clamp(safe_speed / 0.45, 0.0, 1.0)
+        safety_penalty = 0.20 * safety_intervention
+        time_penalty = 0.008
 
         reward = progress_reward + speed_reward - obstacle_penalty - safety_penalty - time_penalty
 
@@ -222,10 +209,10 @@ class SacAdapter(Node):
             reward += 5.0
 
         if state["navigation_status"] == "SAFETY_STOP":
-            reward -= 1.0
+            reward -= 0.8
 
-        self.last_goal_distance = goal_distance if goal_distance >= 0.0 else self.last_goal_distance
-        self.last_reward_time = now
+        if goal_distance >= 0.0:
+            self.last_goal_distance = goal_distance
 
         return {
             "reward": round(reward, 4),
@@ -252,9 +239,10 @@ class SacAdapter(Node):
         reward_info = self.compute_reward_hint(state)
 
         adaptation = {
-            "schema_version": 1,
-            "mode": "rule_policy",
+            "schema_version": 2,
+            "mode": "balanced_rule_policy",
             "policy_type": "rl_parameter_interface",
+            "policy_stage": "B3",
             "stamp": state["stamp"],
             "state": state,
             "action": action,
