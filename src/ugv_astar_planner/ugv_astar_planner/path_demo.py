@@ -1,4 +1,5 @@
 import heapq
+import json
 import math
 import random
 
@@ -8,6 +9,7 @@ from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
 
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from nav_msgs.msg import OccupancyGrid, Path
+from std_msgs.msg import String
 from visualization_msgs.msg import Marker, MarkerArray
 
 
@@ -24,6 +26,9 @@ class AStarPlannerDemo(Node):
                 ("origin_x", 0.0),
                 ("origin_y", 0.0),
                 ("inflate_radius", 0.18),
+                ("fallback_inflate_radii", "0.18,0.12,0.08,0.04,0.0"),
+                ("snap_search_radius_cells", 40),
+                ("minimum_open_neighbors", 1),
                 ("start_x", 0.8),
                 ("start_y", 0.8),
                 ("goal_x", 12.8),
@@ -53,6 +58,15 @@ class AStarPlannerDemo(Node):
         self.origin_x = float(self.get_parameter("origin_x").value)
         self.origin_y = float(self.get_parameter("origin_y").value)
         self.inflate_radius = float(self.get_parameter("inflate_radius").value)
+        self.fallback_inflate_radii_text = str(
+            self.get_parameter("fallback_inflate_radii").value
+        )
+        self.snap_search_radius_cells = int(
+            self.get_parameter("snap_search_radius_cells").value
+        )
+        self.minimum_open_neighbors = int(
+            self.get_parameter("minimum_open_neighbors").value
+        )
 
         self.start_world = (
             float(self.get_parameter("start_x").value),
@@ -88,6 +102,7 @@ class AStarPlannerDemo(Node):
         self.start_pub = self.create_publisher(PoseStamped, "/astar_start", 10)
         self.goal_pub = self.create_publisher(PoseStamped, "/astar_goal", 10)
         self.dynamic_pub = self.create_publisher(MarkerArray, "/dynamic_obstacles", 10)
+        self.status_pub = self.create_publisher(String, "/astar/status", 10)
 
         self.create_subscription(PoseStamped, "/goal_pose", self.on_goal_pose, 10)
         self.create_subscription(PoseStamped, "/move_base_simple/goal", self.on_goal_pose, 10)
@@ -97,6 +112,7 @@ class AStarPlannerDemo(Node):
         self.static_grid = [0 for _ in range(self.width * self.height)]
         self.raw_grid = [0 for _ in range(self.width * self.height)]
         self.grid = [0 for _ in range(self.width * self.height)]
+        self.last_plan_status_key = None
 
         self.build_static_map()
         self.rebuild_grid_with_dynamic_obstacles()
@@ -140,14 +156,27 @@ class AStarPlannerDemo(Node):
     def in_bounds(self, x, y):
         return 0 <= x < self.width and 0 <= y < self.height
 
+    def is_border_cell(self, x, y):
+        return x <= 0 or y <= 0 or x >= self.width - 1 or y >= self.height - 1
+
     def set_static_cell(self, x, y, value):
         if self.in_bounds(x, y):
             self.static_grid[self.index(x, y)] = value
 
-    def is_blocked(self, x, y):
+    def is_blocked_in_grid(self, x, y, grid):
         if not self.in_bounds(x, y):
             return True
-        return self.grid[self.index(x, y)] >= 50
+        return grid[self.index(x, y)] >= 50
+
+    def is_plannable_cell(self, x, y, grid):
+        if not self.in_bounds(x, y):
+            return False
+        if self.is_border_cell(x, y):
+            return False
+        return not self.is_blocked_in_grid(x, y, grid)
+
+    def is_blocked(self, x, y):
+        return self.is_blocked_in_grid(x, y, self.grid)
 
     def world_to_grid(self, wx, wy):
         gx = int((wx - self.origin_x) / self.resolution)
@@ -159,7 +188,7 @@ class AStarPlannerDemo(Node):
         wy = self.origin_y + (gy + 0.5) * self.resolution
         return wx, wy
 
-    def clear_area(self, wx, wy, radius, target_grid):
+    def clear_area(self, wx, wy, radius, target_grid, preserve_border=True):
         cx, cy = self.world_to_grid(wx, wy)
         r = int(radius / self.resolution)
 
@@ -167,8 +196,11 @@ class AStarPlannerDemo(Node):
             for dx in range(-r, r + 1):
                 nx = cx + dx
                 ny = cy + dy
-                if self.in_bounds(nx, ny):
-                    target_grid[self.index(nx, ny)] = 0
+                if not self.in_bounds(nx, ny):
+                    continue
+                if preserve_border and self.is_border_cell(nx, ny):
+                    continue
+                target_grid[self.index(nx, ny)] = 0
 
     def bresenham(self, a, b):
         x0, y0 = a
@@ -296,14 +328,17 @@ class AStarPlannerDemo(Node):
         self.clear_area(self.goal_world[0], self.goal_world[1], 0.35, self.raw_grid)
         self.inflate_obstacles()
 
-    def inflate_obstacles(self):
-        self.grid = self.raw_grid.copy()
-        radius_cells = max(1, int(math.ceil(self.inflate_radius / self.resolution)))
+    def build_inflated_grid(self, raw_grid, inflate_radius):
+        grid = raw_grid.copy()
+        radius_cells = int(math.ceil(max(0.0, inflate_radius) / self.resolution))
+
+        if radius_cells <= 0:
+            return grid
 
         occupied = []
         for y in range(self.height):
             for x in range(self.width):
-                if self.raw_grid[self.index(x, y)] >= 100:
+                if raw_grid[self.index(x, y)] >= 100:
                     occupied.append((x, y))
 
         for ox, oy in occupied:
@@ -315,35 +350,118 @@ class AStarPlannerDemo(Node):
                         continue
                     if math.hypot(dx, dy) <= radius_cells:
                         idx = self.index(nx, ny)
-                        if self.grid[idx] == 0:
-                            self.grid[idx] = 55
+                        if grid[idx] == 0:
+                            grid[idx] = 55
 
         for ox, oy in occupied:
-            self.grid[self.index(ox, oy)] = 100
+            grid[self.index(ox, oy)] = 100
 
-    def nearest_free(self, cell):
-        if self.in_bounds(*cell) and not self.is_blocked(*cell):
+        return grid
+
+    def inflate_obstacles(self):
+        self.grid = self.build_inflated_grid(self.raw_grid, self.inflate_radius)
+
+    def valid_neighbor_cells(self, cell, grid):
+        cx, cy = cell
+        neighbors = [
+            (-1, 0), (1, 0), (0, -1), (0, 1),
+            (-1, -1), (-1, 1), (1, -1), (1, 1),
+        ]
+
+        result = []
+        for dx, dy in neighbors:
+            nx = cx + dx
+            ny = cy + dy
+
+            if not self.is_plannable_cell(nx, ny, grid):
+                continue
+
+            if dx != 0 and dy != 0:
+                if (
+                    not self.is_plannable_cell(cx + dx, cy, grid)
+                    or not self.is_plannable_cell(cx, cy + dy, grid)
+                ):
+                    continue
+
+            result.append((nx, ny))
+
+        return result
+
+    def nearest_free(self, cell, grid=None, require_open_neighbor=True):
+        if grid is None:
+            grid = self.grid
+
+        if (
+            self.is_plannable_cell(cell[0], cell[1], grid)
+            and (
+                not require_open_neighbor
+                or len(self.valid_neighbor_cells(cell, grid)) >= self.minimum_open_neighbors
+            )
+        ):
             return cell
 
         cx, cy = cell
-        for r in range(1, 30):
+
+        for r in range(1, self.snap_search_radius_cells + 1):
+            candidates = []
+
             for dy in range(-r, r + 1):
                 for dx in range(-r, r + 1):
+                    if max(abs(dx), abs(dy)) != r:
+                        continue
+
                     nx = cx + dx
                     ny = cy + dy
-                    if self.in_bounds(nx, ny) and not self.is_blocked(nx, ny):
-                        return nx, ny
+
+                    if not self.is_plannable_cell(nx, ny, grid):
+                        continue
+
+                    if require_open_neighbor:
+                        if len(self.valid_neighbor_cells((nx, ny), grid)) < self.minimum_open_neighbors:
+                            continue
+
+                    score = dx * dx + dy * dy
+                    candidates.append((score, nx, ny))
+
+            if candidates:
+                candidates.sort()
+                _, nx, ny = candidates[0]
+                return nx, ny
 
         return None
+
+    def get_planning_inflation_radii(self):
+        radii = [self.inflate_radius]
+
+        for item in self.fallback_inflate_radii_text.split(","):
+            item = item.strip()
+            if not item:
+                continue
+
+            try:
+                radius = max(0.0, float(item))
+            except ValueError:
+                continue
+
+            if all(abs(radius - existing) > 1e-6 for existing in radii):
+                radii.append(radius)
+
+        if all(abs(existing) > 1e-6 for existing in radii):
+            radii.append(0.0)
+
+        return radii
 
     def heuristic(self, a, b):
         return math.hypot(a[0] - b[0], a[1] - b[1])
 
-    def astar(self, start, goal):
-        start = self.nearest_free(start)
-        goal = self.nearest_free(goal)
-
+    def astar_on_grid(self, start, goal, grid):
         if start is None or goal is None:
+            return []
+
+        if not self.is_plannable_cell(start[0], start[1], grid):
+            return []
+
+        if not self.is_plannable_cell(goal[0], goal[1], grid):
             return []
 
         open_set = []
@@ -352,11 +470,6 @@ class AStarPlannerDemo(Node):
         came_from = {}
         g_score = {start: 0.0}
         closed = set()
-
-        neighbors = [
-            (-1, 0), (1, 0), (0, -1), (0, 1),
-            (-1, -1), (-1, 1), (1, -1), (1, 1),
-        ]
 
         while open_set:
             _, current = heapq.heappop(open_set)
@@ -368,21 +481,12 @@ class AStarPlannerDemo(Node):
                 return self.reconstruct_path(came_from, current)
 
             closed.add(current)
-            cx, cy = current
 
-            for dx, dy in neighbors:
-                nx = cx + dx
-                ny = cy + dy
+            for neighbor in self.valid_neighbor_cells(current, grid):
+                step_cost = math.sqrt(2.0) if (
+                    neighbor[0] != current[0] and neighbor[1] != current[1]
+                ) else 1.0
 
-                if self.is_blocked(nx, ny):
-                    continue
-
-                if dx != 0 and dy != 0:
-                    if self.is_blocked(cx + dx, cy) or self.is_blocked(cx, cy + dy):
-                        continue
-
-                neighbor = (nx, ny)
-                step_cost = math.sqrt(2.0) if dx != 0 and dy != 0 else 1.0
                 tentative_g = g_score[current] + step_cost
 
                 if tentative_g < g_score.get(neighbor, float("inf")):
@@ -393,6 +497,65 @@ class AStarPlannerDemo(Node):
 
         return []
 
+    def astar(self, start, goal):
+        plan = self.plan_path(start, goal)
+        return plan["raw_cells"]
+
+    def plan_path(self, start, goal):
+        attempts = []
+
+        for radius in self.get_planning_inflation_radii():
+            planning_grid = self.build_inflated_grid(self.raw_grid, radius)
+            planned_start = self.nearest_free(start, planning_grid, require_open_neighbor=True)
+            planned_goal = self.nearest_free(goal, planning_grid, require_open_neighbor=True)
+
+            attempt = {
+                "inflate_radius": round(radius, 3),
+                "planned_start": list(planned_start) if planned_start else None,
+                "planned_goal": list(planned_goal) if planned_goal else None,
+                "raw_path_poses": 0,
+            }
+
+            if planned_start is None or planned_goal is None:
+                attempts.append(attempt)
+                continue
+
+            raw_cells = self.astar_on_grid(planned_start, planned_goal, planning_grid)
+            attempt["raw_path_poses"] = len(raw_cells)
+            attempts.append(attempt)
+
+            if raw_cells:
+                recovered = (
+                    abs(radius - self.inflate_radius) > 1e-6
+                    or planned_start != start
+                    or planned_goal != goal
+                )
+                return {
+                    "success": True,
+                    "status": "PATH_OK_WITH_RECOVERY" if recovered else "PATH_OK",
+                    "grid": planning_grid,
+                    "raw_cells": raw_cells,
+                    "requested_start": start,
+                    "requested_goal": goal,
+                    "planned_start": planned_start,
+                    "planned_goal": planned_goal,
+                    "inflate_radius": radius,
+                    "attempts": attempts,
+                }
+
+        return {
+            "success": False,
+            "status": "NO_PATH",
+            "grid": self.grid,
+            "raw_cells": [],
+            "requested_start": start,
+            "requested_goal": goal,
+            "planned_start": None,
+            "planned_goal": None,
+            "inflate_radius": None,
+            "attempts": attempts,
+        }
+
     def reconstruct_path(self, came_from, current):
         cells = [current]
         while current in came_from:
@@ -401,15 +564,21 @@ class AStarPlannerDemo(Node):
         cells.reverse()
         return cells
 
-    def line_is_free(self, a, b):
+    def line_is_free(self, a, b, grid=None):
+        if grid is None:
+            grid = self.grid
+
         for x, y in self.bresenham(a, b):
-            if self.is_blocked(x, y):
+            if not self.is_plannable_cell(x, y, grid):
                 return False
         return True
 
-    def simplify_path(self, cells):
+    def simplify_path(self, cells, grid=None):
         if len(cells) <= 2:
             return cells
+
+        if grid is None:
+            grid = self.grid
 
         result = [cells[0]]
         anchor = 0
@@ -417,7 +586,7 @@ class AStarPlannerDemo(Node):
         while anchor < len(cells) - 1:
             target = len(cells) - 1
             while target > anchor + 1:
-                if self.line_is_free(cells[anchor], cells[target]):
+                if self.line_is_free(cells[anchor], cells[target], grid):
                     break
                 target -= 1
 
@@ -443,15 +612,65 @@ class AStarPlannerDemo(Node):
 
         return msg
 
+    def publish_plan_status(self, plan, raw_cells, simple_cells):
+        payload = {
+            "status": plan["status"],
+            "requested_start_grid": list(plan["requested_start"]),
+            "requested_goal_grid": list(plan["requested_goal"]),
+            "planned_start_grid": list(plan["planned_start"]) if plan["planned_start"] else None,
+            "planned_goal_grid": list(plan["planned_goal"]) if plan["planned_goal"] else None,
+            "inflate_radius_used": plan["inflate_radius"],
+            "raw_path_poses": len(raw_cells),
+            "simple_path_poses": len(simple_cells),
+            "attempts": plan["attempts"],
+        }
+
+        msg = String()
+        msg.data = json.dumps(payload, separators=(",", ":"))
+        self.status_pub.publish(msg)
+
+        key = (
+            payload["status"],
+            payload["inflate_radius_used"],
+            tuple(payload["planned_start_grid"] or []),
+            tuple(payload["planned_goal_grid"] or []),
+            payload["raw_path_poses"],
+        )
+
+        if key == self.last_plan_status_key:
+            return
+
+        self.last_plan_status_key = key
+
+        if plan["success"]:
+            if plan["status"] == "PATH_OK_WITH_RECOVERY":
+                self.get_logger().warn(
+                    "A* path recovered: "
+                    f"start {payload['requested_start_grid']} -> {payload['planned_start_grid']}, "
+                    f"goal {payload['requested_goal_grid']} -> {payload['planned_goal_grid']}, "
+                    f"inflate={payload['inflate_radius_used']}, poses={len(simple_cells)}"
+                )
+            else:
+                self.get_logger().info(f"A* path ok: poses={len(simple_cells)}")
+        else:
+            self.get_logger().warn(
+                "A* failed after fallback attempts: "
+                f"start={payload['requested_start_grid']}, goal={payload['requested_goal_grid']}"
+            )
+
     def publish_paths(self):
         start = self.world_to_grid(*self.start_world)
         goal = self.world_to_grid(*self.goal_world)
 
-        raw_cells = self.astar(start, goal)
-        simple_cells = self.simplify_path(raw_cells)
+        plan = self.plan_path(start, goal)
+        self.grid = plan["grid"]
+
+        raw_cells = plan["raw_cells"]
+        simple_cells = self.simplify_path(raw_cells, self.grid)
 
         self.raw_path_pub.publish(self.make_path_msg(raw_cells))
         self.path_pub.publish(self.make_path_msg(simple_cells))
+        self.publish_plan_status(plan, raw_cells, simple_cells)
 
     def publish_map(self):
         msg = OccupancyGrid()
@@ -512,11 +731,11 @@ class AStarPlannerDemo(Node):
         self.update_dynamic_obstacles(self.timer_period)
         self.rebuild_grid_with_dynamic_obstacles()
 
+        self.publish_paths()
         self.publish_map()
         self.publish_dynamic_obstacles()
         self.publish_pose(self.start_pub, self.start_world)
         self.publish_pose(self.goal_pub, self.goal_world)
-        self.publish_paths()
 
     def on_goal_pose(self, msg):
         self.goal_world = (msg.pose.position.x, msg.pose.position.y)
