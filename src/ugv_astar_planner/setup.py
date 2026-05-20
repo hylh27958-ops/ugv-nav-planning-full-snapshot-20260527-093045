@@ -33,6 +33,7 @@ setup(
             "scenario_runner = ugv_astar_planner.scenario_runner:main",
             "sac_adapter = ugv_astar_planner.sac_adapter:main",
             "teb_path_sender = ugv_astar_planner.teb_path_sender:main",
+            "rl_transition_recorder = ugv_astar_planner.rl_transition_recorder:main",
         ],
     },
 )
