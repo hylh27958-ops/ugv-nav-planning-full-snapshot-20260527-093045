@@ -44,3 +44,12 @@ Thumbs.db
 *.bak_before_b2
 *.bak_before_b2
 *.bak_before_b3
+
+# Local Python virtual environments
+.venv/
+.venv_*/
+venv/
+
+# Local backup files
+*.bak_*
+*.bak*

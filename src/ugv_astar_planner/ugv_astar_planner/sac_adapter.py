@@ -1,14 +1,38 @@
 import json
 import math
 import time
+from pathlib import Path as FilePath
 
 import rclpy
 from rclpy.node import Node
 
 from geometry_msgs.msg import PoseStamped, Twist
-from nav_msgs.msg import Path
+from nav_msgs.msg import Path as NavPath
 from std_msgs.msg import Float32, String
 from visualization_msgs.msg import MarkerArray
+
+
+DEFAULT_STATE_FEATURES = [
+    "goal_distance_m",
+    "min_dynamic_obstacle_distance_m",
+    "safety_scale",
+    "raw_linear_mps",
+    "safe_linear_mps",
+    "global_path_length_m",
+    "local_trajectory_length_m",
+    "progress_mps",
+    "risk",
+]
+
+DEFAULT_ACTION_FEATURES = [
+    "speed_scale",
+    "lookahead_scale",
+    "local_horizon_scale",
+    "obstacle_caution",
+]
+
+DEFAULT_ACTION_LOW = [0.62, 0.95, 1.00, 1.00]
+DEFAULT_ACTION_HIGH = [1.00, 1.28, 1.45, 1.70]
 
 
 class SacAdapter(Node):
@@ -17,6 +41,10 @@ class SacAdapter(Node):
 
         self.declare_parameter("update_period", 0.2)
         self.declare_parameter("mode", "b4_v2_proactive_rule_policy")
+        self.declare_parameter("model_path", "/root/ugv_nav_ws/results/c2_offline_sac/sac_actor.pt")
+        self.declare_parameter("torch_device", "cpu")
+        self.declare_parameter("fallback_to_rule", True)
+
         self.declare_parameter("caution_distance", 1.40)
         self.declare_parameter("warning_distance", 0.75)
         self.declare_parameter("emergency_distance", 0.40)
@@ -30,6 +58,9 @@ class SacAdapter(Node):
 
         self.update_period = float(self.get_parameter("update_period").value)
         self.mode = str(self.get_parameter("mode").value)
+        self.model_path = str(self.get_parameter("model_path").value)
+        self.torch_device_name = str(self.get_parameter("torch_device").value)
+        self.fallback_to_rule = bool(self.get_parameter("fallback_to_rule").value)
 
         self.caution_distance = float(self.get_parameter("caution_distance").value)
         self.warning_distance = float(self.get_parameter("warning_distance").value)
@@ -65,11 +96,26 @@ class SacAdapter(Node):
         self.prev_stamp = time.time()
         self.progress_mps = 0.0
 
+        self.torch = None
+        self.actor = None
+        self.policy_ready = False
+        self.policy_error = ""
+        self.policy_state_features = DEFAULT_STATE_FEATURES
+        self.policy_action_features = DEFAULT_ACTION_FEATURES
+        self.policy_action_low = DEFAULT_ACTION_LOW
+        self.policy_action_high = DEFAULT_ACTION_HIGH
+        self.policy_state_mean = [0.0] * len(DEFAULT_STATE_FEATURES)
+        self.policy_state_std = [1.0] * len(DEFAULT_STATE_FEATURES)
+
+        self.use_torch_policy = "torch" in self.mode.lower() or "actor" in self.mode.lower()
+        if self.use_torch_policy:
+            self.load_torch_policy()
+
         self.create_subscription(PoseStamped, "/robot_pose", self.on_robot_pose, 10)
         self.create_subscription(PoseStamped, "/astar_goal", self.on_goal_pose, 10)
         self.create_subscription(MarkerArray, "/dynamic_obstacles", self.on_dynamic_obstacles, 10)
-        self.create_subscription(Path, "/astar_path", self.on_global_path, 10)
-        self.create_subscription(Path, "/local_trajectory", self.on_local_path, 10)
+        self.create_subscription(NavPath, "/astar_path", self.on_global_path, 10)
+        self.create_subscription(NavPath, "/local_trajectory", self.on_local_path, 10)
         self.create_subscription(Twist, "/cmd_vel_raw", self.on_cmd_raw, 10)
         self.create_subscription(Twist, "/cmd_vel", self.on_cmd_safe, 10)
 
@@ -80,9 +126,96 @@ class SacAdapter(Node):
         self.adaptation_pub = self.create_publisher(String, "/sac/adaptation", 10)
         self.state_pub = self.create_publisher(String, "/sac/state", 10)
         self.reward_pub = self.create_publisher(Float32, "/sac/reward", 10)
+        self.policy_status_pub = self.create_publisher(String, "/sac/policy_status", 10)
 
         self.timer = self.create_timer(self.update_period, self.on_timer)
-        self.get_logger().info("B4-v2 proactive SAC adapter started.")
+
+        if self.use_torch_policy and self.policy_ready:
+            self.get_logger().info(f"SAC adapter started in torch_policy mode: {self.model_path}")
+        elif self.use_torch_policy:
+            self.get_logger().warn(f"Torch policy requested but unavailable: {self.policy_error}")
+        else:
+            self.get_logger().info("SAC adapter started in B4-v2 rule policy mode.")
+
+    def build_torch_actor_class(self, torch, nn):
+        def mlp(in_dim, out_dim, hidden_dim):
+            return nn.Sequential(
+                nn.Linear(in_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Linear(hidden_dim, out_dim),
+            )
+
+        class TorchActor(nn.Module):
+            def __init__(self, state_dim, action_dim, hidden_dim):
+                super().__init__()
+                self.backbone = mlp(state_dim, hidden_dim, hidden_dim)
+                self.mean = nn.Linear(hidden_dim, action_dim)
+                self.log_std = nn.Linear(hidden_dim, action_dim)
+
+            def forward(self, state):
+                h = self.backbone[:-1](state)
+                h = self.backbone[-1](h)
+                mean = self.mean(h)
+                log_std = self.log_std(h).clamp(-5.0, 2.0)
+                return mean, log_std
+
+            def deterministic(self, state):
+                mean, _ = self(state)
+                return torch.tanh(mean)
+
+        return TorchActor
+
+    def load_torch_policy(self):
+        try:
+            import torch
+            from torch import nn
+        except Exception as exc:
+            self.policy_error = f"failed to import torch: {exc}"
+            return
+
+        path = FilePath(self.model_path).expanduser()
+        if not path.exists():
+            self.policy_error = f"model file not found: {path}"
+            return
+
+        try:
+            device = torch.device(self.torch_device_name)
+            try:
+                checkpoint = torch.load(str(path), map_location=device, weights_only=False)
+            except TypeError:
+                checkpoint = torch.load(str(path), map_location=device)
+
+            metadata = checkpoint.get("metadata", {})
+            self.policy_state_features = metadata.get("state_features", DEFAULT_STATE_FEATURES)
+            self.policy_action_features = metadata.get("action_features", DEFAULT_ACTION_FEATURES)
+            self.policy_action_low = metadata.get("action_low", DEFAULT_ACTION_LOW)
+            self.policy_action_high = metadata.get("action_high", DEFAULT_ACTION_HIGH)
+            self.policy_state_mean = metadata.get(
+                "state_mean", [0.0] * len(self.policy_state_features)
+            )
+            self.policy_state_std = metadata.get(
+                "state_std", [1.0] * len(self.policy_state_features)
+            )
+
+            hidden_dim = int(metadata.get("hidden_dim", 128))
+            state_dim = len(self.policy_state_features)
+            action_dim = len(self.policy_action_features)
+
+            TorchActor = self.build_torch_actor_class(torch, nn)
+            actor = TorchActor(state_dim, action_dim, hidden_dim).to(device)
+            actor.load_state_dict(checkpoint["actor_state_dict"])
+            actor.eval()
+
+            self.torch = torch
+            self.torch_device = device
+            self.actor = actor
+            self.policy_ready = True
+            self.policy_error = ""
+        except Exception as exc:
+            self.policy_ready = False
+            self.policy_error = f"failed to load torch policy: {exc}"
 
     def on_robot_pose(self, msg):
         self.robot_pose = msg
@@ -158,7 +291,7 @@ class SacAdapter(Node):
         alpha = self.rise_alpha if abs(target - 1.0) > abs(old - 1.0) else self.fall_alpha
         return old + alpha * (target - old)
 
-    def compute_action(self, obstacle_distance):
+    def compute_rule_action(self, obstacle_distance):
         if obstacle_distance < 0.0:
             return 1.0, 1.0, 1.0, 1.0, 0.0
 
@@ -169,14 +302,18 @@ class SacAdapter(Node):
             horizon = 1.0
             caution = 1.0
         elif obstacle_distance >= self.warning_distance:
-            r = (self.caution_distance - obstacle_distance) / max(1e-6, self.caution_distance - self.warning_distance)
+            r = (self.caution_distance - obstacle_distance) / max(
+                1e-6, self.caution_distance - self.warning_distance
+            )
             risk = 0.35 * r
             speed = 1.0 - 0.10 * r
             lookahead = 1.0 + 0.20 * r
             horizon = 1.0 + 0.25 * r
             caution = 1.0 + 0.35 * r
         elif obstacle_distance >= self.emergency_distance:
-            r = (self.warning_distance - obstacle_distance) / max(1e-6, self.warning_distance - self.emergency_distance)
+            r = (self.warning_distance - obstacle_distance) / max(
+                1e-6, self.warning_distance - self.emergency_distance
+            )
             risk = 0.35 + 0.45 * r
             speed = 0.90 - 0.18 * r
             lookahead = 1.20 + 0.08 * r
@@ -189,6 +326,12 @@ class SacAdapter(Node):
             horizon = self.local_horizon_ceiling
             caution = self.obstacle_caution_ceiling
 
+        speed, lookahead, horizon, caution = self.apply_safety_bounds(
+            speed, lookahead, horizon, caution
+        )
+        return speed, lookahead, horizon, caution, risk
+
+    def apply_safety_bounds(self, speed, lookahead, horizon, caution):
         if self.safety_scale < 0.65:
             speed = min(speed, 0.82)
             horizon = max(horizon, 1.30)
@@ -199,7 +342,39 @@ class SacAdapter(Node):
         horizon = self.clamp(horizon, 1.0, self.local_horizon_ceiling)
         caution = self.clamp(caution, 1.0, self.obstacle_caution_ceiling)
 
-        return speed, lookahead, horizon, caution, risk
+        return speed, lookahead, horizon, caution
+
+    def compute_torch_action(self, state):
+        if not self.policy_ready or self.actor is None:
+            raise RuntimeError(self.policy_error or "torch policy is not ready")
+
+        values = []
+        for name, mean, std in zip(
+            self.policy_state_features,
+            self.policy_state_mean,
+            self.policy_state_std,
+        ):
+            std = std if abs(std) > 1e-6 else 1.0
+            values.append((float(state.get(name, 0.0)) - float(mean)) / float(std))
+
+        torch = self.torch
+        with torch.no_grad():
+            tensor = torch.tensor([values], dtype=torch.float32, device=self.torch_device)
+            action_norm = self.actor.deterministic(tensor).cpu().numpy()[0].tolist()
+
+        action = []
+        for value, low, high in zip(action_norm, self.policy_action_low, self.policy_action_high):
+            real_value = float(low) + 0.5 * (float(value) + 1.0) * (float(high) - float(low))
+            action.append(real_value)
+
+        action_map = dict(zip(self.policy_action_features, action))
+
+        speed = action_map.get("speed_scale", 1.0)
+        lookahead = action_map.get("lookahead_scale", 1.0)
+        horizon = action_map.get("local_horizon_scale", 1.0)
+        caution = action_map.get("obstacle_caution", 1.0)
+
+        return self.apply_safety_bounds(speed, lookahead, horizon, caution)
 
     def compute_progress(self, goal_distance):
         now = time.time()
@@ -223,6 +398,17 @@ class SacAdapter(Node):
         msg.data = float(reward)
         self.reward_pub.publish(msg)
 
+    def publish_policy_status(self, policy_source):
+        status = {
+            "mode": self.mode,
+            "requested_torch_policy": self.use_torch_policy,
+            "policy_ready": self.policy_ready,
+            "policy_source": policy_source,
+            "model_path": self.model_path,
+            "error": self.policy_error,
+        }
+        self.publish_string(self.policy_status_pub, json.dumps(status, separators=(",", ":")))
+
     def on_timer(self):
         goal_distance = self.goal_distance_m
         if goal_distance < 0.0:
@@ -234,24 +420,12 @@ class SacAdapter(Node):
 
         self.compute_progress(goal_distance)
 
-        target_speed, target_lookahead, target_horizon, target_caution, risk = self.compute_action(obstacle_distance)
-
-        self.speed_scale = self.blend(self.speed_scale, target_speed)
-        self.lookahead_scale = self.blend(self.lookahead_scale, target_lookahead)
-        self.local_horizon_scale = self.blend(self.local_horizon_scale, target_horizon)
-        self.obstacle_caution = self.blend(self.obstacle_caution, target_caution)
-
         global_len = self.path_length(self.global_path)
         local_len = self.path_length(self.local_path)
 
-        reward = 0.2 * self.safe_linear_mps
-        reward += 0.3 * max(0.0, self.progress_mps)
-        reward -= 0.35 * risk
-        reward -= 0.20 * max(0.0, 1.0 - self.safety_scale)
-        if goal_distance >= 0.0:
-            reward -= 0.01 * goal_distance
-            if goal_distance < 0.35:
-                reward += 1.0
+        rule_speed, rule_lookahead, rule_horizon, rule_caution, risk = self.compute_rule_action(
+            obstacle_distance
+        )
 
         state = {
             "schema_version": 1,
@@ -263,7 +437,49 @@ class SacAdapter(Node):
             "progress_mps": round(self.progress_mps, 3),
             "global_path_length_m": round(global_len, 3),
             "local_trajectory_length_m": round(local_len, 3),
+            "risk": round(risk, 3),
         }
+
+        policy_source = "rule_policy"
+
+        if self.use_torch_policy and self.policy_ready:
+            try:
+                target_speed, target_lookahead, target_horizon, target_caution = self.compute_torch_action(state)
+                policy_source = "torch_policy"
+            except Exception as exc:
+                self.policy_error = str(exc)
+                if not self.fallback_to_rule:
+                    target_speed, target_lookahead, target_horizon, target_caution = 0.0, 1.0, 1.0, 1.0
+                    policy_source = "torch_policy_error_stop"
+                else:
+                    target_speed, target_lookahead, target_horizon, target_caution = (
+                        rule_speed,
+                        rule_lookahead,
+                        rule_horizon,
+                        rule_caution,
+                    )
+                    policy_source = "torch_policy_error_fallback_rule"
+        else:
+            target_speed, target_lookahead, target_horizon, target_caution = (
+                rule_speed,
+                rule_lookahead,
+                rule_horizon,
+                rule_caution,
+            )
+
+        self.speed_scale = self.blend(self.speed_scale, target_speed)
+        self.lookahead_scale = self.blend(self.lookahead_scale, target_lookahead)
+        self.local_horizon_scale = self.blend(self.local_horizon_scale, target_horizon)
+        self.obstacle_caution = self.blend(self.obstacle_caution, target_caution)
+
+        reward = 0.2 * self.safe_linear_mps
+        reward += 0.3 * max(0.0, self.progress_mps)
+        reward -= 0.35 * risk
+        reward -= 0.20 * max(0.0, 1.0 - self.safety_scale)
+        if goal_distance >= 0.0:
+            reward -= 0.01 * goal_distance
+            if goal_distance < 0.35:
+                reward += 1.0
 
         action = {
             "speed_scale": round(self.speed_scale, 3),
@@ -275,7 +491,8 @@ class SacAdapter(Node):
         adaptation = {
             "schema_version": 1,
             "mode": self.mode,
-            "policy_type": "rl_parameter_interface",
+            "policy_type": "torch_actor" if policy_source == "torch_policy" else "rl_parameter_interface",
+            "policy_source": policy_source,
             "stamp": time.time(),
             "state": state,
             "action": action,
@@ -290,6 +507,7 @@ class SacAdapter(Node):
         self.publish_string(self.state_pub, json.dumps(state, separators=(",", ":")))
         self.publish_string(self.adaptation_pub, json.dumps(adaptation, separators=(",", ":")))
         self.publish_reward(reward)
+        self.publish_policy_status(policy_source)
 
 
 def main():
