@@ -1,0 +1,100 @@
+astar_planner_demo:
+  ros__parameters:
+    width: 140
+    height: 90
+    resolution: 0.1
+    origin_x: 0.0
+    origin_y: 0.0
+    inflate_radius: 0.18
+    start_x: 0.8
+    start_y: 0.8
+    goal_x: 12.8
+    goal_y: 8.0
+    timer_period: 0.2
+    random_seed: 55
+    random_obstacle_count: 110
+    block_min_w: 2
+    block_max_w: 10
+    block_min_h: 2
+    block_max_h: 8
+    route_corridor_cells: 4
+    dynamic_obstacle_radius: 0.35
+    dynamic_obstacles: "4.8,2.5,0.15,0.00,3.4,6.2,2.5,2.5;6.6,6.1,0.00,-0.17,6.6,6.6,4.5,7.5;8.9,4.5,-0.16,0.00,7.6,10.6,4.5,4.5;10.8,7.3,0.00,-0.13,10.8,10.8,5.8,8.4"
+
+fake_base:
+  ros__parameters:
+    initial_x: 0.8
+    initial_y: 0.8
+    initial_yaw: 0.0
+    update_period: 0.05
+    cmd_timeout: 0.5
+
+local_trajectory_planner:
+  ros__parameters:
+    update_period: 0.1
+    horizon_distance: 3.0
+    sample_step: 0.15
+    obstacle_influence: 0.9
+    max_obstacle_shift: 0.35
+    smooth_iterations: 3
+
+pure_pursuit:
+  ros__parameters:
+    update_period: 0.1
+    lookahead: 0.7
+    max_linear: 0.45
+    max_angular: 1.2
+    goal_tolerance: 0.25
+
+safety_filter:
+  ros__parameters:
+    update_period: 0.05
+    max_linear: 0.45
+    max_angular: 1.2
+    max_linear_accel: 0.45
+    max_angular_accel: 1.8
+    cmd_timeout: 0.5
+    front_angle_deg: 60.0
+    stop_distance: 0.45
+    slow_distance: 1.2
+
+sac_adapter:
+  ros__parameters:
+    update_period: 0.2
+    mode: "b4_v2_proactive_rule_policy"
+    caution_distance: 1.40
+    warning_distance: 0.75
+    emergency_distance: 0.40
+    speed_floor: 0.62
+    speed_ceiling: 1.0
+    lookahead_ceiling: 1.28
+    local_horizon_ceiling: 1.45
+    obstacle_caution_ceiling: 1.70
+    rise_alpha: 0.55
+    fall_alpha: 0.22
+
+teb_path_sender:
+  ros__parameters:
+    action_name: "follow_path"
+    controller_id: "FollowPath"
+    goal_checker_id: "goal_checker"
+    update_period: 0.2
+    resend_period: 2.0
+    periodic_replan: true
+    goal_change_distance: 0.25
+    min_path_poses: 2
+
+experiment_recorder:
+  ros__parameters:
+    output_dir: "~/ugv_nav_ws/results"
+    file_prefix: "ugv_metrics"
+    flush_every: 10
+
+scenario_runner:
+  ros__parameters:
+    goals: "12.6,1.0;1.0,7.9;12.8,8.0;0.8,0.8"
+    loop: false
+    timeout_sec: 70.0
+    settle_sec: 2.0
+    initial_delay_sec: 3.0
+    publish_period_sec: 1.0
