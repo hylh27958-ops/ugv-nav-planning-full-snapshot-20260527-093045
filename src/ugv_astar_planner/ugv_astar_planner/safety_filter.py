@@ -22,6 +22,13 @@ class SafetyFilter(Node):
         self.declare_parameter("front_angle_deg", 60.0)
         self.declare_parameter("stop_distance", 0.45)
         self.declare_parameter("slow_distance", 1.2)
+        self.declare_parameter("enable_boundary_guard", True)
+        self.declare_parameter("map_min_x", 0.0)
+        self.declare_parameter("map_max_x", 14.0)
+        self.declare_parameter("map_min_y", 0.0)
+        self.declare_parameter("map_max_y", 9.0)
+        self.declare_parameter("boundary_margin", 0.25)
+        self.declare_parameter("boundary_slow_margin", 0.45)
 
         self.update_period = float(self.get_parameter("update_period").value)
         self.max_linear = float(self.get_parameter("max_linear").value)
@@ -32,6 +39,13 @@ class SafetyFilter(Node):
         self.front_angle = math.radians(float(self.get_parameter("front_angle_deg").value))
         self.stop_distance = float(self.get_parameter("stop_distance").value)
         self.slow_distance = float(self.get_parameter("slow_distance").value)
+        self.enable_boundary_guard = bool(self.get_parameter("enable_boundary_guard").value)
+        self.map_min_x = float(self.get_parameter("map_min_x").value)
+        self.map_max_x = float(self.get_parameter("map_max_x").value)
+        self.map_min_y = float(self.get_parameter("map_min_y").value)
+        self.map_max_y = float(self.get_parameter("map_max_y").value)
+        self.boundary_margin = float(self.get_parameter("boundary_margin").value)
+        self.boundary_slow_margin = float(self.get_parameter("boundary_slow_margin").value)
 
         self.max_linear_scale = 1.0
         self.stop_distance_scale = 1.0
@@ -149,6 +163,47 @@ class SafetyFilter(Node):
 
         return nearest
 
+    def boundary_linear_scale(self, linear):
+        if not self.enable_boundary_guard or not self.has_pose:
+            return 1.0, None
+
+        if abs(linear) < 1e-6:
+            return 1.0, None
+
+        safe_min_x = self.map_min_x + self.boundary_margin
+        safe_max_x = self.map_max_x - self.boundary_margin
+        safe_min_y = self.map_min_y + self.boundary_margin
+        safe_max_y = self.map_max_y - self.boundary_margin
+
+        vx = math.cos(self.yaw) * linear
+        vy = math.sin(self.yaw) * linear
+
+        distances = []
+
+        if vx < -1e-6:
+            distances.append(self.x - safe_min_x)
+        elif vx > 1e-6:
+            distances.append(safe_max_x - self.x)
+
+        if vy < -1e-6:
+            distances.append(self.y - safe_min_y)
+        elif vy > 1e-6:
+            distances.append(safe_max_y - self.y)
+
+        if not distances:
+            return 1.0, None
+
+        nearest = min(distances)
+
+        if nearest <= 0.02:
+            return 0.0, f"map boundary {nearest:.2f} m"
+
+        if nearest < self.boundary_slow_margin:
+            scale = self.clamp(nearest / max(self.boundary_slow_margin, 1e-6), 0.0, 1.0)
+            return scale, f"map boundary {nearest:.2f} m"
+
+        return 1.0, None
+
     def publish_status(self, text):
         msg = String()
         msg.data = text
@@ -190,6 +245,15 @@ class SafetyFilter(Node):
                     scale = self.clamp(scale, 0.0, 1.0)
                     target.linear.x *= scale
                     status = f"SLOW: obstacle {nearest:.2f} m"
+
+            boundary_scale, boundary_reason = self.boundary_linear_scale(target.linear.x)
+            if boundary_reason is not None:
+                if boundary_scale <= 0.0:
+                    target.linear.x = 0.0
+                    status = f"STOP: {boundary_reason}"
+                else:
+                    target.linear.x *= boundary_scale
+                    status = f"SLOW: {boundary_reason}"
 
         out = Twist()
         out.linear.x = self.approach(

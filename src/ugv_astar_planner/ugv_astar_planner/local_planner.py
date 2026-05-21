@@ -20,6 +20,11 @@ class LocalTrajectoryPlanner(Node):
         self.declare_parameter("obstacle_influence", 0.9)
         self.declare_parameter("max_obstacle_shift", 0.35)
         self.declare_parameter("smooth_iterations", 3)
+        self.declare_parameter("map_min_x", 0.0)
+        self.declare_parameter("map_max_x", 14.0)
+        self.declare_parameter("map_min_y", 0.0)
+        self.declare_parameter("map_max_y", 9.0)
+        self.declare_parameter("boundary_margin", 0.25)
 
         self.update_period = float(self.get_parameter("update_period").value)
         self.horizon_distance = float(self.get_parameter("horizon_distance").value)
@@ -27,6 +32,11 @@ class LocalTrajectoryPlanner(Node):
         self.obstacle_influence = float(self.get_parameter("obstacle_influence").value)
         self.max_obstacle_shift = float(self.get_parameter("max_obstacle_shift").value)
         self.smooth_iterations = int(self.get_parameter("smooth_iterations").value)
+        self.map_min_x = float(self.get_parameter("map_min_x").value)
+        self.map_max_x = float(self.get_parameter("map_max_x").value)
+        self.map_min_y = float(self.get_parameter("map_min_y").value)
+        self.map_max_y = float(self.get_parameter("map_max_y").value)
+        self.boundary_margin = float(self.get_parameter("boundary_margin").value)
 
         self.horizon_scale = 1.0
         self.obstacle_influence_scale = 1.0
@@ -60,7 +70,10 @@ class LocalTrajectoryPlanner(Node):
         self.obstacle_shift_scale = float(data.get("obstacle_shift_scale", 1.0))
 
     def on_global_path(self, msg):
-        self.global_path = [(p.pose.position.x, p.pose.position.y) for p in msg.poses]
+        self.global_path = [
+            self.clamp_point(p.pose.position.x, p.pose.position.y)
+            for p in msg.poses
+        ]
 
     def on_robot_pose(self, msg):
         self.x = msg.pose.position.x
@@ -87,6 +100,16 @@ class LocalTrajectoryPlanner(Node):
     def scaled_max_obstacle_shift(self):
         return max(0.05, self.max_obstacle_shift * self.obstacle_shift_scale)
 
+    def clamp(self, value, lo, hi):
+        return max(lo, min(hi, value))
+
+    def clamp_point(self, x, y):
+        min_x = self.map_min_x + self.boundary_margin
+        max_x = self.map_max_x - self.boundary_margin
+        min_y = self.map_min_y + self.boundary_margin
+        max_y = self.map_max_y - self.boundary_margin
+        return self.clamp(x, min_x, max_x), self.clamp(y, min_y, max_y)
+
     def distance_to_robot(self, point):
         return math.hypot(point[0] - self.x, point[1] - self.y)
 
@@ -104,7 +127,7 @@ class LocalTrajectoryPlanner(Node):
             return []
 
         nearest_i = self.nearest_global_index()
-        segment = [(self.x, self.y)]
+        segment = [self.clamp_point(self.x, self.y)]
         total = 0.0
         last = self.global_path[nearest_i]
         horizon = self.scaled_horizon_distance()
@@ -179,7 +202,7 @@ class LocalTrajectoryPlanner(Node):
                 shift_x *= scale
                 shift_y *= scale
 
-            adjusted.append((px + shift_x, py + shift_y))
+            adjusted.append(self.clamp_point(px + shift_x, py + shift_y))
 
         adjusted.append(points[-1])
         return adjusted
@@ -210,6 +233,7 @@ class LocalTrajectoryPlanner(Node):
         msg.header.frame_id = "map"
 
         for x, y in points:
+            x, y = self.clamp_point(x, y)
             pose = PoseStamped()
             pose.header = msg.header
             pose.pose.position.x = x

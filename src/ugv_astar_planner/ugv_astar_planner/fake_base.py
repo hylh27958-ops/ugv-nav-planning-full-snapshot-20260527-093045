@@ -17,12 +17,24 @@ class FakeBase(Node):
         self.declare_parameter("initial_yaw", 0.0)
         self.declare_parameter("update_period", 0.05)
         self.declare_parameter("cmd_timeout", 0.5)
+        self.declare_parameter("enforce_map_bounds", True)
+        self.declare_parameter("map_min_x", 0.0)
+        self.declare_parameter("map_max_x", 14.0)
+        self.declare_parameter("map_min_y", 0.0)
+        self.declare_parameter("map_max_y", 9.0)
+        self.declare_parameter("boundary_margin", 0.25)
 
         self.x = float(self.get_parameter("initial_x").value)
         self.y = float(self.get_parameter("initial_y").value)
         self.yaw = float(self.get_parameter("initial_yaw").value)
         self.update_period = float(self.get_parameter("update_period").value)
         self.cmd_timeout = float(self.get_parameter("cmd_timeout").value)
+        self.enforce_map_bounds = bool(self.get_parameter("enforce_map_bounds").value)
+        self.map_min_x = float(self.get_parameter("map_min_x").value)
+        self.map_max_x = float(self.get_parameter("map_max_x").value)
+        self.map_min_y = float(self.get_parameter("map_min_y").value)
+        self.map_max_y = float(self.get_parameter("map_max_y").value)
+        self.boundary_margin = float(self.get_parameter("boundary_margin").value)
 
         self.create_subscription(Twist, "/cmd_vel", self.on_cmd_vel, 10)
 
@@ -56,6 +68,23 @@ class FakeBase(Node):
     def quat_from_yaw(self, yaw):
         return math.sin(yaw * 0.5), math.cos(yaw * 0.5)
 
+    def clamp(self, value, lo, hi):
+        return max(lo, min(hi, value))
+
+    def clamp_to_map_bounds(self, x, y):
+        if not self.enforce_map_bounds:
+            return x, y, False
+
+        min_x = self.map_min_x + self.boundary_margin
+        max_x = self.map_max_x - self.boundary_margin
+        min_y = self.map_min_y + self.boundary_margin
+        max_y = self.map_max_y - self.boundary_margin
+
+        clamped_x = self.clamp(x, min_x, max_x)
+        clamped_y = self.clamp(y, min_y, max_y)
+        clamped = abs(clamped_x - x) > 1e-9 or abs(clamped_y - y) > 1e-9
+        return clamped_x, clamped_y, clamped
+
     def update(self):
         dt = self.update_period
 
@@ -69,8 +98,16 @@ class FakeBase(Node):
             v = self.v
             w = self.w
 
-        self.x += v * math.cos(self.yaw) * dt
-        self.y += v * math.sin(self.yaw) * dt
+        next_x = self.x + v * math.cos(self.yaw) * dt
+        next_y = self.y + v * math.sin(self.yaw) * dt
+        next_x, next_y, clamped = self.clamp_to_map_bounds(next_x, next_y)
+
+        if clamped:
+            v = 0.0
+            self.v = 0.0
+
+        self.x = next_x
+        self.y = next_y
         self.yaw = self.normalize_angle(self.yaw + w * dt)
 
         self.publish_state()
