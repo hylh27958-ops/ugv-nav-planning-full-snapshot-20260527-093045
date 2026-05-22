@@ -29,6 +29,8 @@ class SafetyFilter(Node):
         self.declare_parameter("map_max_y", 9.0)
         self.declare_parameter("boundary_margin", 0.25)
         self.declare_parameter("boundary_slow_margin", 0.45)
+        self.declare_parameter("goal_switch_stop_s", 0.5)
+        self.declare_parameter("goal_change_distance", 0.2)
 
         self.update_period = float(self.get_parameter("update_period").value)
         self.max_linear = float(self.get_parameter("max_linear").value)
@@ -46,6 +48,8 @@ class SafetyFilter(Node):
         self.map_max_y = float(self.get_parameter("map_max_y").value)
         self.boundary_margin = float(self.get_parameter("boundary_margin").value)
         self.boundary_slow_margin = float(self.get_parameter("boundary_slow_margin").value)
+        self.goal_switch_stop_s = float(self.get_parameter("goal_switch_stop_s").value)
+        self.goal_change_distance = float(self.get_parameter("goal_change_distance").value)
 
         self.max_linear_scale = 1.0
         self.stop_distance_scale = 1.0
@@ -53,6 +57,7 @@ class SafetyFilter(Node):
 
         self.create_subscription(Twist, "/cmd_vel_raw", self.on_cmd_raw, 10)
         self.create_subscription(PoseStamped, "/robot_pose", self.on_robot_pose, 10)
+        self.create_subscription(PoseStamped, "/astar_goal", self.on_goal_pose, 10)
         self.create_subscription(MarkerArray, "/dynamic_obstacles", self.on_dynamic_obstacles, 10)
         self.create_subscription(String, "/sac/adaptation", self.on_adaptation, 10)
 
@@ -69,6 +74,8 @@ class SafetyFilter(Node):
         self.y = 0.0
         self.yaw = 0.0
         self.dynamic_obstacles = []
+        self.last_goal = None
+        self.goal_switch_hold_until_s = 0.0
 
         self.timer = self.create_timer(self.update_period, self.update)
         self.get_logger().info("Safety filter started. /cmd_vel_raw -> /cmd_vel")
@@ -93,6 +100,9 @@ class SafetyFilter(Node):
         stop = self.effective_stop_distance()
         return max(stop + 0.1, self.slow_distance * self.slow_distance_scale)
 
+    def now_s(self):
+        return self.get_clock().now().nanoseconds * 1e-9
+
     def on_cmd_raw(self, msg):
         self.raw_cmd = msg
         self.last_raw_time = self.get_clock().now()
@@ -104,6 +114,22 @@ class SafetyFilter(Node):
         q = msg.pose.orientation
         self.yaw = self.yaw_from_quat(q.x, q.y, q.z, q.w)
         self.has_pose = True
+
+    def on_goal_pose(self, msg):
+        new_goal = (msg.pose.position.x, msg.pose.position.y)
+
+        if self.last_goal is not None:
+            moved = math.hypot(
+                new_goal[0] - self.last_goal[0],
+                new_goal[1] - self.last_goal[1],
+            )
+            if moved > self.goal_change_distance:
+                self.goal_switch_hold_until_s = self.now_s() + self.goal_switch_stop_s
+                self.raw_cmd = Twist()
+                self.last_out = Twist()
+                self.last_raw_time = self.get_clock().now()
+
+        self.last_goal = new_goal
 
     def on_dynamic_obstacles(self, msg):
         obstacles = []
@@ -224,6 +250,13 @@ class SafetyFilter(Node):
         max_linear = self.effective_max_linear()
         stop_distance = self.effective_stop_distance()
         slow_distance = self.effective_slow_distance()
+
+        if self.now_s() < self.goal_switch_hold_until_s:
+            self.raw_cmd = Twist()
+            self.last_out = Twist()
+            self.cmd_pub.publish(Twist())
+            self.publish_status("STOP: goal switch")
+            return
 
         if age > self.cmd_timeout:
             status = "STOP: cmd_vel_raw timeout"

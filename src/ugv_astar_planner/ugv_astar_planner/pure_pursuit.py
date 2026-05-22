@@ -30,6 +30,8 @@ class PurePursuit(Node):
         self.declare_parameter("min_lookahead", 0.35)
         self.declare_parameter("max_lookahead", 1.20)
         self.declare_parameter("angular_slowdown_gain", 0.45)
+        self.declare_parameter("goal_switch_hold_s", 0.5)
+        self.declare_parameter("goal_change_distance", 0.2)
 
         self.update_period = float(self.get_parameter("update_period").value)
         self.base_lookahead = float(self.get_parameter("lookahead").value)
@@ -47,6 +49,8 @@ class PurePursuit(Node):
         self.min_lookahead = float(self.get_parameter("min_lookahead").value)
         self.max_lookahead = float(self.get_parameter("max_lookahead").value)
         self.angular_slowdown_gain = float(self.get_parameter("angular_slowdown_gain").value)
+        self.goal_switch_hold_s = float(self.get_parameter("goal_switch_hold_s").value)
+        self.goal_change_distance = float(self.get_parameter("goal_change_distance").value)
 
         self.create_subscription(Path, "/local_trajectory", self.on_path, 10)
         self.create_subscription(PoseStamped, "/robot_pose", self.on_robot_pose, 10)
@@ -66,6 +70,8 @@ class PurePursuit(Node):
 
         self.goal_x = 0.0
         self.goal_y = 0.0
+        self.last_goal = None
+        self.goal_switch_hold_until = 0.0
 
         self.speed_scale = 1.0
         self.lookahead_scale = 1.0
@@ -106,8 +112,20 @@ class PurePursuit(Node):
         self.has_robot_pose = True
 
     def on_goal_pose(self, msg):
-        self.goal_x = msg.pose.position.x
-        self.goal_y = msg.pose.position.y
+        new_goal = (msg.pose.position.x, msg.pose.position.y)
+
+        if self.last_goal is not None:
+            moved = math.hypot(
+                new_goal[0] - self.last_goal[0],
+                new_goal[1] - self.last_goal[1],
+            )
+            if moved > self.goal_change_distance:
+                self.path = []
+                self.goal_switch_hold_until = time.time() + self.goal_switch_hold_s
+
+        self.goal_x = new_goal[0]
+        self.goal_y = new_goal[1]
+        self.last_goal = new_goal
         self.has_goal = True
 
     def on_sac_adaptation(self, msg):
@@ -240,6 +258,10 @@ class PurePursuit(Node):
     def on_timer(self):
         if not self.has_robot_pose:
             self.publish_zero("WAITING_FOR_ROBOT_POSE")
+            return
+
+        if time.time() < self.goal_switch_hold_until:
+            self.publish_zero("GOAL_SWITCH_HOLD")
             return
 
         if len(self.path) < 2:
