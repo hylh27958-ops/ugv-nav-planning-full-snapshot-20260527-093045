@@ -1,0 +1,4 @@
+method,runs,success_count,mean_duration_s,mean_safe_linear_mps,mean_min_obstacle_m,total_danger_lt_0p20,danger_rate_per_s,total_caution_lt_0p50,caution_rate_per_s,mean_safety_scale,mean_stop_like_samples
+baseline_pp,10,10,164.46,0.379,0.157,71,0.043171591876444114,715,0.4347561717134865,0.886,36.2
+c3_torch_sac_pp,10,10,194.72,0.319,0.123,111,0.05700493015612161,913,0.4688783894823336,0.872,45.5
+e17_safety_trigger,10,10,173.99200000000002,0.3538,0.1048,79,0.04540438640857051,555,0.3189801829969194,0.8475999999999999,71.3

@@ -1,0 +1,11 @@
+seed,has_rl,rows,trigger_active,real_risk,rl_intent,trigger_rate,risk_trigger_coverage,min_obs_all,min_obs_when_active,mean_torch_speed,mean_torch_caution,file
+101,1,541,99,99,325,0.183,1.0,0.261,0.261,0.869,1.366,/root/ugv_nav_ws/results/stage_e17_safety_trigger/rl_seed101/rl_transitions_20260523_155302.csv
+102,1,801,106,106,454,0.132,1.0,-0.038,0.01,0.861,1.378,/root/ugv_nav_ws/results/stage_e17_safety_trigger/rl_seed102/rl_transitions_20260523_155555.csv
+103,1,109,3,3,17,0.028,1.0,0.79,0.79,0.948,1.182,/root/ugv_nav_ws/results/stage_e17_safety_trigger/rl_seed103/rl_transitions_20260523_155903.csv
+104,1,358,20,20,131,0.056,1.0,0.351,0.351,0.903,1.296,/root/ugv_nav_ws/results/stage_e17_safety_trigger/rl_seed104/rl_transitions_20260523_160146.csv
+105,1,742,121,121,381,0.163,1.0,-0.04,0.061,0.88,1.341,/root/ugv_nav_ws/results/stage_e17_safety_trigger/rl_seed105/rl_transitions_20260523_160449.csv
+106,1,86,13,13,22,0.151,1.0,0.46,0.46,0.92,1.231,/root/ugv_nav_ws/results/stage_e17_safety_trigger/rl_seed106/rl_transitions_20260523_160748.csv
+107,1,703,108,108,352,0.154,1.0,0.117,0.117,0.88,1.334,/root/ugv_nav_ws/results/stage_e17_safety_trigger/rl_seed107/rl_transitions_20260523_161042.csv
+108,1,835,146,146,477,0.175,1.0,0.151,0.151,0.86,1.376,/root/ugv_nav_ws/results/stage_e17_safety_trigger/rl_seed108/rl_transitions_20260523_161336.csv
+109,1,820,136,136,406,0.166,1.0,0.078,0.078,0.877,1.341,/root/ugv_nav_ws/results/stage_e17_safety_trigger/rl_seed109/rl_transitions_20260523_161654.csv
+110,1,805,131,131,427,0.163,1.0,0.125,0.125,0.872,1.357,/root/ugv_nav_ws/results/stage_e17_safety_trigger/rl_seed110/rl_transitions_20260523_162007.csv

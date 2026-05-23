@@ -1,0 +1,11 @@
+method,seed,success,duration_s,final_goal_distance_m,mean_safe_linear_mps,min_obstacle_m,danger_lt_0p20,caution_lt_0p50,mean_safety_scale,stop_like_samples
+e17_safety_trigger,101,1,165.8,0.227,0.341,0.261,0,38,0.822,86
+e17_safety_trigger,102,1,179.8,0.221,0.344,0.01,10,65,0.824,69
+e17_safety_trigger,103,1,154.72,0.22,0.372,0.096,7,33,0.889,59
+e17_safety_trigger,104,1,175.8,0.222,0.343,0.108,6,50,0.819,61
+e17_safety_trigger,105,1,169.8,0.22,0.376,-0.0,13,32,0.896,50
+e17_safety_trigger,106,1,164.8,0.216,0.341,0.102,6,58,0.826,97
+e17_safety_trigger,107,1,165.8,0.209,0.365,0.117,4,63,0.877,73
+e17_safety_trigger,108,1,191.8,0.219,0.34,0.151,8,80,0.814,92
+e17_safety_trigger,109,1,185.8,0.22,0.364,0.078,9,72,0.866,55
+e17_safety_trigger,110,1,185.8,0.22,0.352,0.125,16,64,0.843,71

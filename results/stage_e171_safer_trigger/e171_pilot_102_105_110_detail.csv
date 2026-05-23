@@ -1,0 +1,4 @@
+method,seed,success,duration_s,mean_safe_linear_mps,min_obstacle_m,danger_lt_0p20,caution_lt_0p50,mean_safety_scale
+e171_safer_trigger,102,1,185.8,0.336,0.012,17,65,0.834
+e171_safer_trigger,105,1,185.8,0.341,0.006,37,124,0.833
+e171_safer_trigger,110,1,184.89,0.349,0.238,0,41,0.854
