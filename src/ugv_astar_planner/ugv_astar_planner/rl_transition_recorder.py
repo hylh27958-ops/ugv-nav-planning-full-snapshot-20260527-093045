@@ -62,6 +62,13 @@ class RlTransitionRecorder(Node):
             "lookahead_scale",
             "local_horizon_scale",
             "obstacle_caution",
+            "policy_source",
+            "safety_trigger_active",
+            "safety_trigger_real_risk",
+            "safety_trigger_rl_intent",
+            "safety_trigger_reason",
+            "torch_speed_scale",
+            "torch_obstacle_caution",
             "risk",
             "reward",
         ]
@@ -141,6 +148,8 @@ class RlTransitionRecorder(Node):
         state = self.latest_state
         adaptation = self.latest_adaptation
         action = adaptation.get("action", {})
+        trigger = adaptation.get("safety_trigger", {})
+        torch_action = trigger.get("torch_action", {})
 
         goal_distance = float(
             self.get_value(state, self.latest_summary, "goal_distance_m", -1.0)
@@ -180,6 +189,13 @@ class RlTransitionRecorder(Node):
             "lookahead_scale": action.get("lookahead_scale", adaptation.get("lookahead_scale", 1.0)),
             "local_horizon_scale": action.get("local_horizon_scale", adaptation.get("local_horizon_scale", 1.0)),
             "obstacle_caution": action.get("obstacle_caution", adaptation.get("obstacle_caution", 1.0)),
+            "policy_source": adaptation.get("policy_source", ""),
+            "safety_trigger_active": int(bool(trigger.get("active", False))),
+            "safety_trigger_real_risk": int(bool(trigger.get("real_risk", False))),
+            "safety_trigger_rl_intent": int(bool(trigger.get("rl_intent", False))),
+            "safety_trigger_reason": trigger.get("reason", ""),
+            "torch_speed_scale": torch_action.get("speed_scale", ""),
+            "torch_obstacle_caution": torch_action.get("obstacle_caution", ""),
             "risk": adaptation.get("risk", 0.0),
             "reward": adaptation.get("reward", self.latest_reward),
         }

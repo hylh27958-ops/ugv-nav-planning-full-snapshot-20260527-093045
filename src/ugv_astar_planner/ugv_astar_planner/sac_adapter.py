@@ -45,6 +45,15 @@ class SacAdapter(Node):
         self.declare_parameter("torch_device", "cpu")
         self.declare_parameter("fallback_to_rule", True)
 
+        self.declare_parameter("safety_trigger_enabled", False)
+        self.declare_parameter("safety_trigger_obstacle_distance", 0.80)
+        self.declare_parameter("safety_trigger_speed_threshold", 0.88)
+        self.declare_parameter("safety_trigger_caution_threshold", 1.25)
+        self.declare_parameter("safety_trigger_speed_scale", 0.85)
+        self.declare_parameter("safety_trigger_lookahead_scale", 1.10)
+        self.declare_parameter("safety_trigger_local_horizon_scale", 1.20)
+        self.declare_parameter("safety_trigger_obstacle_caution", 1.35)
+
         self.declare_parameter("caution_distance", 1.40)
         self.declare_parameter("warning_distance", 0.75)
         self.declare_parameter("emergency_distance", 0.40)
@@ -56,11 +65,55 @@ class SacAdapter(Node):
         self.declare_parameter("rise_alpha", 0.55)
         self.declare_parameter("fall_alpha", 0.22)
 
+        self.declare_parameter("risk_gate_enabled", False)
+        self.declare_parameter("risk_gate_clear_distance", 1.20)
+        self.declare_parameter("risk_gate_warning_distance", 0.60)
+        self.declare_parameter("risk_gate_clear_speed_floor", 0.95)
+        self.declare_parameter("risk_gate_warning_speed_floor", 0.80)
+        self.declare_parameter("risk_gate_clear_caution_ceiling", 1.10)
+        self.declare_parameter("risk_gate_warning_caution_ceiling", 1.35)
+        self.declare_parameter("risk_gate_clear_lookahead_ceiling", 1.08)
+        self.declare_parameter("risk_gate_warning_lookahead_ceiling", 1.18)
+        self.declare_parameter("risk_gate_clear_horizon_ceiling", 1.10)
+        self.declare_parameter("risk_gate_warning_horizon_ceiling", 1.25)
+
+        self.declare_parameter("mode_selector_enabled", False)
+        self.declare_parameter("mode_selector_clear_distance", 1.20)
+        self.declare_parameter("mode_selector_warning_distance", 0.60)
+        self.declare_parameter("mode_selector_cautious_speed_trigger", 0.88)
+        self.declare_parameter("mode_selector_emergency_speed_trigger", 0.78)
+        self.declare_parameter("mode_selector_cautious_caution_trigger", 1.25)
+        self.declare_parameter("mode_selector_emergency_caution_trigger", 1.45)
+
+        self.declare_parameter("mode_normal_speed", 1.00)
+        self.declare_parameter("mode_normal_lookahead", 1.00)
+        self.declare_parameter("mode_normal_horizon", 1.00)
+        self.declare_parameter("mode_normal_caution", 1.00)
+
+        self.declare_parameter("mode_cautious_speed", 0.90)
+        self.declare_parameter("mode_cautious_lookahead", 1.08)
+        self.declare_parameter("mode_cautious_horizon", 1.15)
+        self.declare_parameter("mode_cautious_caution", 1.25)
+
+        self.declare_parameter("mode_emergency_speed", 0.72)
+        self.declare_parameter("mode_emergency_lookahead", 1.18)
+        self.declare_parameter("mode_emergency_horizon", 1.35)
+        self.declare_parameter("mode_emergency_caution", 1.55)
+
         self.update_period = float(self.get_parameter("update_period").value)
         self.mode = str(self.get_parameter("mode").value)
         self.model_path = str(self.get_parameter("model_path").value)
         self.torch_device_name = str(self.get_parameter("torch_device").value)
         self.fallback_to_rule = bool(self.get_parameter("fallback_to_rule").value)
+
+        self.safety_trigger_enabled = bool(self.get_parameter("safety_trigger_enabled").value)
+        self.safety_trigger_obstacle_distance = float(self.get_parameter("safety_trigger_obstacle_distance").value)
+        self.safety_trigger_speed_threshold = float(self.get_parameter("safety_trigger_speed_threshold").value)
+        self.safety_trigger_caution_threshold = float(self.get_parameter("safety_trigger_caution_threshold").value)
+        self.safety_trigger_speed_scale = float(self.get_parameter("safety_trigger_speed_scale").value)
+        self.safety_trigger_lookahead_scale = float(self.get_parameter("safety_trigger_lookahead_scale").value)
+        self.safety_trigger_local_horizon_scale = float(self.get_parameter("safety_trigger_local_horizon_scale").value)
+        self.safety_trigger_obstacle_caution = float(self.get_parameter("safety_trigger_obstacle_caution").value)
 
         self.caution_distance = float(self.get_parameter("caution_distance").value)
         self.warning_distance = float(self.get_parameter("warning_distance").value)
@@ -74,6 +127,41 @@ class SacAdapter(Node):
 
         self.rise_alpha = float(self.get_parameter("rise_alpha").value)
         self.fall_alpha = float(self.get_parameter("fall_alpha").value)
+
+        self.risk_gate_enabled = bool(self.get_parameter("risk_gate_enabled").value)
+        self.risk_gate_clear_distance = float(self.get_parameter("risk_gate_clear_distance").value)
+        self.risk_gate_warning_distance = float(self.get_parameter("risk_gate_warning_distance").value)
+        self.risk_gate_clear_speed_floor = float(self.get_parameter("risk_gate_clear_speed_floor").value)
+        self.risk_gate_warning_speed_floor = float(self.get_parameter("risk_gate_warning_speed_floor").value)
+        self.risk_gate_clear_caution_ceiling = float(self.get_parameter("risk_gate_clear_caution_ceiling").value)
+        self.risk_gate_warning_caution_ceiling = float(self.get_parameter("risk_gate_warning_caution_ceiling").value)
+        self.risk_gate_clear_lookahead_ceiling = float(self.get_parameter("risk_gate_clear_lookahead_ceiling").value)
+        self.risk_gate_warning_lookahead_ceiling = float(self.get_parameter("risk_gate_warning_lookahead_ceiling").value)
+        self.risk_gate_clear_horizon_ceiling = float(self.get_parameter("risk_gate_clear_horizon_ceiling").value)
+        self.risk_gate_warning_horizon_ceiling = float(self.get_parameter("risk_gate_warning_horizon_ceiling").value)
+
+        self.mode_selector_enabled = bool(self.get_parameter("mode_selector_enabled").value)
+        self.mode_selector_clear_distance = float(self.get_parameter("mode_selector_clear_distance").value)
+        self.mode_selector_warning_distance = float(self.get_parameter("mode_selector_warning_distance").value)
+        self.mode_selector_cautious_speed_trigger = float(self.get_parameter("mode_selector_cautious_speed_trigger").value)
+        self.mode_selector_emergency_speed_trigger = float(self.get_parameter("mode_selector_emergency_speed_trigger").value)
+        self.mode_selector_cautious_caution_trigger = float(self.get_parameter("mode_selector_cautious_caution_trigger").value)
+        self.mode_selector_emergency_caution_trigger = float(self.get_parameter("mode_selector_emergency_caution_trigger").value)
+
+        self.mode_normal_speed = float(self.get_parameter("mode_normal_speed").value)
+        self.mode_normal_lookahead = float(self.get_parameter("mode_normal_lookahead").value)
+        self.mode_normal_horizon = float(self.get_parameter("mode_normal_horizon").value)
+        self.mode_normal_caution = float(self.get_parameter("mode_normal_caution").value)
+
+        self.mode_cautious_speed = float(self.get_parameter("mode_cautious_speed").value)
+        self.mode_cautious_lookahead = float(self.get_parameter("mode_cautious_lookahead").value)
+        self.mode_cautious_horizon = float(self.get_parameter("mode_cautious_horizon").value)
+        self.mode_cautious_caution = float(self.get_parameter("mode_cautious_caution").value)
+
+        self.mode_emergency_speed = float(self.get_parameter("mode_emergency_speed").value)
+        self.mode_emergency_lookahead = float(self.get_parameter("mode_emergency_lookahead").value)
+        self.mode_emergency_horizon = float(self.get_parameter("mode_emergency_horizon").value)
+        self.mode_emergency_caution = float(self.get_parameter("mode_emergency_caution").value)
 
         self.robot_pose = None
         self.goal_pose = None
@@ -344,6 +432,80 @@ class SacAdapter(Node):
 
         return speed, lookahead, horizon, caution
 
+    def apply_mode_selector(self, speed, lookahead, horizon, caution, obstacle_distance):
+        if not self.mode_selector_enabled:
+            return speed, lookahead, horizon, caution, "disabled"
+
+        if obstacle_distance < 0.0 or obstacle_distance >= self.mode_selector_clear_distance:
+            mode = "normal"
+        elif obstacle_distance >= self.mode_selector_warning_distance:
+            if (
+                speed <= self.mode_selector_cautious_speed_trigger
+                or caution >= self.mode_selector_cautious_caution_trigger
+            ):
+                mode = "cautious"
+            else:
+                mode = "normal"
+        else:
+            if (
+                speed <= self.mode_selector_emergency_speed_trigger
+                or caution >= self.mode_selector_emergency_caution_trigger
+            ):
+                mode = "emergency"
+            else:
+                mode = "cautious"
+
+        if mode == "normal":
+            speed = self.mode_normal_speed
+            lookahead = self.mode_normal_lookahead
+            horizon = self.mode_normal_horizon
+            caution = self.mode_normal_caution
+        elif mode == "cautious":
+            speed = self.mode_cautious_speed
+            lookahead = self.mode_cautious_lookahead
+            horizon = self.mode_cautious_horizon
+            caution = self.mode_cautious_caution
+        else:
+            speed = self.mode_emergency_speed
+            lookahead = self.mode_emergency_lookahead
+            horizon = self.mode_emergency_horizon
+            caution = self.mode_emergency_caution
+
+        speed, lookahead, horizon, caution = self.apply_safety_bounds(
+            speed, lookahead, horizon, caution
+        )
+        return speed, lookahead, horizon, caution, mode
+
+    def apply_risk_gate(self, speed, lookahead, horizon, caution, obstacle_distance):
+        if not self.risk_gate_enabled:
+            return speed, lookahead, horizon, caution, "disabled"
+
+        if obstacle_distance < 0.0:
+            return speed, lookahead, horizon, caution, "unknown_obstacle"
+
+        if self.safety_scale < 0.65:
+            return speed, lookahead, horizon, caution, "safety_filter_override"
+
+        if obstacle_distance >= self.risk_gate_clear_distance:
+            speed = max(speed, self.risk_gate_clear_speed_floor)
+            lookahead = min(lookahead, self.risk_gate_clear_lookahead_ceiling)
+            horizon = min(horizon, self.risk_gate_clear_horizon_ceiling)
+            caution = min(caution, self.risk_gate_clear_caution_ceiling)
+            mode = "clear_path"
+        elif obstacle_distance >= self.risk_gate_warning_distance:
+            speed = max(speed, self.risk_gate_warning_speed_floor)
+            lookahead = min(lookahead, self.risk_gate_warning_lookahead_ceiling)
+            horizon = min(horizon, self.risk_gate_warning_horizon_ceiling)
+            caution = min(caution, self.risk_gate_warning_caution_ceiling)
+            mode = "warning_zone"
+        else:
+            mode = "high_risk_zone"
+
+        speed, lookahead, horizon, caution = self.apply_safety_bounds(
+            speed, lookahead, horizon, caution
+        )
+        return speed, lookahead, horizon, caution, mode
+
     def compute_torch_action(self, state):
         if not self.policy_ready or self.actor is None:
             raise RuntimeError(self.policy_error or "torch policy is not ready")
@@ -376,6 +538,51 @@ class SacAdapter(Node):
 
         return self.apply_safety_bounds(speed, lookahead, horizon, caution)
 
+    def compute_safety_trigger_action(self, obstacle_distance, torch_action):
+        torch_speed, torch_lookahead, torch_horizon, torch_caution = torch_action
+
+        real_risk = (
+            obstacle_distance >= 0.0
+            and obstacle_distance < self.safety_trigger_obstacle_distance
+        )
+        rl_intent = (
+            torch_speed < self.safety_trigger_speed_threshold
+            or torch_caution > self.safety_trigger_caution_threshold
+        )
+        trigger_active = bool(real_risk and rl_intent)
+
+        if trigger_active:
+            target = (
+                self.safety_trigger_speed_scale,
+                self.safety_trigger_lookahead_scale,
+                self.safety_trigger_local_horizon_scale,
+                self.safety_trigger_obstacle_caution,
+            )
+            reason = "safe_mode"
+        else:
+            target = (1.0, 1.0, 1.0, 1.0)
+            reason = "baseline_clear" if not real_risk else "baseline_no_rl_intent"
+
+        trigger_info = {
+            "enabled": True,
+            "active": trigger_active,
+            "real_risk": bool(real_risk),
+            "rl_intent": bool(rl_intent),
+            "reason": reason,
+            "obstacle_distance_m": round(obstacle_distance, 3),
+            "obstacle_threshold_m": round(self.safety_trigger_obstacle_distance, 3),
+            "speed_threshold": round(self.safety_trigger_speed_threshold, 3),
+            "caution_threshold": round(self.safety_trigger_caution_threshold, 3),
+            "torch_action": {
+                "speed_scale": round(torch_speed, 3),
+                "lookahead_scale": round(torch_lookahead, 3),
+                "local_horizon_scale": round(torch_horizon, 3),
+                "obstacle_caution": round(torch_caution, 3),
+            },
+        }
+
+        return target, trigger_info
+
     def compute_progress(self, goal_distance):
         now = time.time()
         dt = max(1e-6, now - self.prev_stamp)
@@ -398,7 +605,7 @@ class SacAdapter(Node):
         msg.data = float(reward)
         self.reward_pub.publish(msg)
 
-    def publish_policy_status(self, policy_source):
+    def publish_policy_status(self, policy_source, trigger_info=None):
         status = {
             "mode": self.mode,
             "requested_torch_policy": self.use_torch_policy,
@@ -406,7 +613,10 @@ class SacAdapter(Node):
             "policy_source": policy_source,
             "model_path": self.model_path,
             "error": self.policy_error,
+            "safety_trigger_enabled": self.safety_trigger_enabled,
         }
+        if trigger_info is not None:
+            status["safety_trigger"] = trigger_info
         self.publish_string(self.policy_status_pub, json.dumps(status, separators=(",", ":")))
 
     def on_timer(self):
@@ -467,6 +677,109 @@ class SacAdapter(Node):
                 rule_caution,
             )
 
+        raw_target_action = {
+            "speed_scale": round(target_speed, 3),
+            "lookahead_scale": round(target_lookahead, 3),
+            "local_horizon_scale": round(target_horizon, 3),
+            "obstacle_caution": round(target_caution, 3),
+        }
+
+        target_speed, target_lookahead, target_horizon, target_caution, mode_selector_mode = (
+            self.apply_mode_selector(
+                target_speed,
+                target_lookahead,
+                target_horizon,
+                target_caution,
+                obstacle_distance,
+            )
+        )
+
+        mode_selector_action = {
+            "speed_scale": round(target_speed, 3),
+            "lookahead_scale": round(target_lookahead, 3),
+            "local_horizon_scale": round(target_horizon, 3),
+            "obstacle_caution": round(target_caution, 3),
+        }
+
+        target_speed, target_lookahead, target_horizon, target_caution, risk_gate_mode = (
+            self.apply_risk_gate(
+                target_speed,
+                target_lookahead,
+                target_horizon,
+                target_caution,
+                obstacle_distance,
+            )
+        )
+
+        gated_target_action = {
+            "speed_scale": round(target_speed, 3),
+            "lookahead_scale": round(target_lookahead, 3),
+            "local_horizon_scale": round(target_horizon, 3),
+            "obstacle_caution": round(target_caution, 3),
+        }
+
+        trigger_info = {
+            "enabled": self.safety_trigger_enabled,
+            "active": False,
+            "real_risk": False,
+            "rl_intent": False,
+            "reason": "disabled",
+            "torch_action": {},
+        }
+
+        if self.safety_trigger_enabled:
+            if self.use_torch_policy and self.policy_ready:
+                try:
+                    torch_action = self.compute_torch_action(state)
+                    (
+                        target_speed,
+                        target_lookahead,
+                        target_horizon,
+                        target_caution,
+                    ), trigger_info = self.compute_safety_trigger_action(
+                        obstacle_distance, torch_action
+                    )
+                    policy_source = (
+                        "safety_trigger_safe_mode"
+                        if trigger_info["active"]
+                        else "safety_trigger_baseline"
+                    )
+                except Exception as exc:
+                    self.policy_error = str(exc)
+                    target_speed, target_lookahead, target_horizon, target_caution = (
+                        1.0,
+                        1.0,
+                        1.0,
+                        1.0,
+                    )
+                    policy_source = "safety_trigger_error_baseline"
+                    trigger_info = {
+                        "enabled": True,
+                        "active": False,
+                        "real_risk": False,
+                        "rl_intent": False,
+                        "reason": "torch_error_baseline",
+                        "error": self.policy_error,
+                        "torch_action": {},
+                    }
+            else:
+                target_speed, target_lookahead, target_horizon, target_caution = (
+                    1.0,
+                    1.0,
+                    1.0,
+                    1.0,
+                )
+                policy_source = "safety_trigger_no_torch_baseline"
+                trigger_info = {
+                    "enabled": True,
+                    "active": False,
+                    "real_risk": False,
+                    "rl_intent": False,
+                    "reason": "torch_unavailable_baseline",
+                    "error": self.policy_error,
+                    "torch_action": {},
+                }
+
         self.speed_scale = self.blend(self.speed_scale, target_speed)
         self.lookahead_scale = self.blend(self.lookahead_scale, target_lookahead)
         self.local_horizon_scale = self.blend(self.local_horizon_scale, target_horizon)
@@ -488,14 +801,28 @@ class SacAdapter(Node):
             "obstacle_caution": round(self.obstacle_caution, 3),
         }
 
+        policy_type = (
+            "rl_safety_trigger"
+            if self.safety_trigger_enabled
+            else ("torch_actor" if policy_source == "torch_policy" else "rl_parameter_interface")
+        )
+
         adaptation = {
             "schema_version": 1,
             "mode": self.mode,
-            "policy_type": "torch_actor" if policy_source == "torch_policy" else "rl_parameter_interface",
+            "policy_type": policy_type,
             "policy_source": policy_source,
             "stamp": time.time(),
             "state": state,
             "action": action,
+            "safety_trigger": trigger_info,
+            "raw_target_action": raw_target_action,
+            "mode_selector_enabled": self.mode_selector_enabled,
+            "mode_selector_mode": mode_selector_mode,
+            "mode_selector_action": mode_selector_action,
+            "gated_target_action": gated_target_action,
+            "risk_gate_enabled": self.risk_gate_enabled,
+            "risk_gate_mode": risk_gate_mode,
             "risk": round(risk, 3),
             "reward": round(reward, 4),
             "speed_scale": action["speed_scale"],
@@ -507,7 +834,7 @@ class SacAdapter(Node):
         self.publish_string(self.state_pub, json.dumps(state, separators=(",", ":")))
         self.publish_string(self.adaptation_pub, json.dumps(adaptation, separators=(",", ":")))
         self.publish_reward(reward)
-        self.publish_policy_status(policy_source)
+        self.publish_policy_status(policy_source, trigger_info)
 
 
 def main():
