@@ -1,0 +1,2 @@
+method,runs,success_count,mean_duration_s,mean_safe_linear_mps,mean_min_obstacle_m,total_danger_lt_0p20,total_caution_lt_0p50,mean_safety_scale,mean_stop_like_samples
+e18_dqn_safety_trigger,2,2,192.69,0.336,0.1535,31,158,0.8365,73.5
