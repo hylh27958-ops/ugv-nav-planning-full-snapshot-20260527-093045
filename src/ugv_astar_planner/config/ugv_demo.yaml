@@ -28,6 +28,12 @@ fake_base:
     initial_yaw: 0.0
     update_period: 0.05
     cmd_timeout: 0.5
+    enforce_map_bounds: true
+    map_min_x: 0.0
+    map_max_x: 14.0
+    map_min_y: 0.0
+    map_max_y: 9.0
+    boundary_margin: 0.25
 
 local_trajectory_planner:
   ros__parameters:
@@ -37,6 +43,11 @@ local_trajectory_planner:
     obstacle_influence: 0.9
     max_obstacle_shift: 0.35
     smooth_iterations: 3
+    map_min_x: 0.0
+    map_max_x: 14.0
+    map_min_y: 0.0
+    map_max_y: 9.0
+    boundary_margin: 0.25
 
 pure_pursuit:
   ros__parameters:
@@ -55,6 +66,8 @@ pure_pursuit:
     min_lookahead: 0.45
     max_lookahead: 1.10
     angular_slowdown_gain: 0.35
+    goal_switch_hold_s: 0.5
+    goal_change_distance: 0.2
 
 safety_filter:
   ros__parameters:
@@ -67,21 +80,72 @@ safety_filter:
     front_angle_deg: 45.0
     stop_distance: 0.30
     slow_distance: 0.85
+    enable_boundary_guard: true
+    map_min_x: 0.0
+    map_max_x: 14.0
+    map_min_y: 0.0
+    map_max_y: 9.0
+    boundary_margin: 0.25
+    boundary_slow_margin: 0.45
+    goal_switch_stop_s: 0.5
+    goal_change_distance: 0.2
+
+online_sac_safety_policy:
+  ros__parameters:
+    update_period: 0.05
+    max_linear: 0.45
+    max_angular: 1.2
+    cmd_timeout: 0.5
+    action_mode: "rule_bootstrap"
+    training_enabled: false
+    publish_debug: true
+    caution_distance: 0.85
+    warning_distance: 0.45
+    emergency_distance: 0.20
+    min_linear_scale: 0.0
+    max_linear_scale: 1.0
+    min_angular_scale: 0.5
+    max_angular_scale: 1.2
+    max_angular_residual: 0.25
+    map_min_x: 0.0
+    map_max_x: 14.0
+    map_min_y: 0.0
+    map_max_y: 9.0
+    boundary_margin: 0.25
+    boundary_caution_margin: 0.60
+
+minimal_safety_shield:
+  ros__parameters:
+    update_period: 0.05
+    max_linear: 0.45
+    max_angular: 1.2
+    cmd_timeout: 0.5
+    emergency_distance: 0.18
+    front_angle_deg: 65.0
+    enable_boundary_guard: true
+    map_min_x: 0.0
+    map_max_x: 14.0
+    map_min_y: 0.0
+    map_max_y: 9.0
+    boundary_margin: 0.25
 
 sac_adapter:
   ros__parameters:
     update_period: 0.2
-    smoothing_alpha: 0.35
-    obstacle_caution_distance: 0.6
-    goal_slow_distance: 0.6
-    min_speed_scale: 0.65
-    max_speed_scale: 1.00
-    min_lookahead_scale: 0.80
-    max_lookahead_scale: 1.35
-    min_obstacle_caution: 0.80
-    max_obstacle_caution: 1.45
-    min_local_horizon_scale: 0.85
-    max_local_horizon_scale: 1.20
+    mode: "b4_v2_proactive_rule_policy"
+    model_path: "/root/ugv_nav_ws/results/c2_offline_sac/sac_actor.pt"
+    torch_device: "cpu"
+    fallback_to_rule: true
+    caution_distance: 1.40
+    warning_distance: 0.75
+    emergency_distance: 0.40
+    speed_floor: 0.62
+    speed_ceiling: 1.0
+    lookahead_ceiling: 1.28
+    local_horizon_ceiling: 1.45
+    obstacle_caution_ceiling: 1.70
+    rise_alpha: 0.55
+    fall_alpha: 0.22
 
 teb_path_sender:
   ros__parameters:

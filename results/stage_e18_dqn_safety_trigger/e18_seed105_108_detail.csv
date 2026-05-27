@@ -1,3 +1,0 @@
-method,seed,success,duration_s,final_goal_distance_m,mean_safe_linear_mps,min_obstacle_m,danger_lt_0p20,caution_lt_0p50,mean_safety_scale,stop_like_samples
-e18_dqn_safety_trigger,105,1,185.8,0.211,0.343,0.125,29,97,0.856,71
-e18_dqn_safety_trigger,108,1,199.58,0.226,0.329,0.182,2,61,0.817,76

@@ -1,2 +1,0 @@
-method,runs,success_count,mean_duration_s,mean_safe_linear_mps,mean_min_obstacle_m,total_danger_lt_0p20,total_caution_lt_0p50,mean_safety_scale,mean_stop_like_samples
-e181_gated_dqn_trigger,2,1,240.65,0.179,0.8065,18,101,0.4465,2109.0

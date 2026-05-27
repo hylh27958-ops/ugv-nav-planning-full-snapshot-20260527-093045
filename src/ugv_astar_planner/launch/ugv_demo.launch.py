@@ -15,6 +15,7 @@ def generate_launch_description():
     include_scenario_runner = LaunchConfiguration("include_scenario_runner")
     include_sac_adapter = LaunchConfiguration("include_sac_adapter")
     use_teb = LaunchConfiguration("use_teb")
+    use_rl_safety = LaunchConfiguration("use_rl_safety")
 
     foxglove_address = LaunchConfiguration("foxglove_address")
     foxglove_port = LaunchConfiguration("foxglove_port")
@@ -66,6 +67,11 @@ def generate_launch_description():
             "use_teb",
             default_value="false",
             description="Use TEB controller instead of local_planner + pure_pursuit.",
+        ),
+        DeclareLaunchArgument(
+            "use_rl_safety",
+            default_value="false",
+            description="Use online SAC safety policy plus minimal shield instead of full safety_filter.",
         ),
         DeclareLaunchArgument(
             "foxglove_address",
@@ -185,9 +191,28 @@ def generate_launch_description():
         ),
 
         Node(
+            condition=UnlessCondition(use_rl_safety),
             package="ugv_astar_planner",
             executable="safety_filter",
             name="safety_filter",
+            parameters=[config_file],
+            output="screen",
+        ),
+
+        Node(
+            condition=IfCondition(use_rl_safety),
+            package="ugv_astar_planner",
+            executable="online_sac_safety_policy",
+            name="online_sac_safety_policy",
+            parameters=[config_file],
+            output="screen",
+        ),
+
+        Node(
+            condition=IfCondition(use_rl_safety),
+            package="ugv_astar_planner",
+            executable="minimal_safety_shield",
+            name="minimal_safety_shield",
             parameters=[config_file],
             output="screen",
         ),

@@ -28,6 +28,8 @@ setup(
             "local_planner = ugv_astar_planner.local_planner:main",
             "pure_pursuit = ugv_astar_planner.pure_pursuit:main",
             "safety_filter = ugv_astar_planner.safety_filter:main",
+            "online_sac_safety_policy = ugv_astar_planner.online_sac_safety_policy:main",
+            "minimal_safety_shield = ugv_astar_planner.minimal_safety_shield:main",
             "metrics_monitor = ugv_astar_planner.metrics_monitor:main",
             "experiment_recorder = ugv_astar_planner.experiment_recorder:main",
             "scenario_runner = ugv_astar_planner.scenario_runner:main",

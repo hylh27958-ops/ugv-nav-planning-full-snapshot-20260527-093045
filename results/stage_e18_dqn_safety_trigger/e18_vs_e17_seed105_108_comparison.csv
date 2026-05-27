@@ -1,3 +1,0 @@
-seed,success_e17,duration_s_e17,mean_safe_linear_mps_e17,min_obstacle_m_e17,danger_lt_0p20_e17,caution_lt_0p50_e17,mean_safety_scale_e17,stop_like_samples_e17,success_e18,duration_s_e18,mean_safe_linear_mps_e18,min_obstacle_m_e18,danger_lt_0p20_e18,caution_lt_0p50_e18,mean_safety_scale_e18,stop_like_samples_e18,delta_success,delta_duration_s,delta_mean_safe_linear_mps,delta_min_obstacle_m,delta_danger_lt_0p20,delta_caution_lt_0p50,delta_mean_safety_scale,delta_stop_like_samples
-105,1,169.8,0.376,-0.0,13,32,0.896,50,1,185.8,0.343,0.125,29,97,0.856,71,0,16.0,-0.032999999999999974,0.125,16,65,-0.040000000000000036,21
-108,1,191.8,0.34,0.151,8,80,0.814,92,1,199.58,0.329,0.182,2,61,0.817,76,0,7.780000000000001,-0.01100000000000001,0.031,-6,-19,0.0030000000000000027,-16

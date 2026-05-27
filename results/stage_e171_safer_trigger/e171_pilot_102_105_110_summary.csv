@@ -1,2 +1,0 @@
-method,runs,success_count,mean_duration_s,mean_safe_linear_mps,mean_min_obstacle_m,total_danger_lt_0p20,total_caution_lt_0p50,mean_safety_scale
-e171_safer_trigger,3,3,185.49666666666667,0.342,0.08533333333333333,54,230,0.8403333333333333
